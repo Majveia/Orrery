@@ -1,0 +1,49 @@
+name: Deploy orrery to GitHub Pages
+
+on:
+  push:
+    branches: ["claude/wonderful-fermat-002sny", "main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; let in-progress finish.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Assemble static site
+        run: |
+          mkdir -p _site
+          # The Pages root serves index.html; the orrery is a single self-contained file.
+          cp orrery.html _site/index.html
+          cp orrery.html _site/orrery.html
+          [ -f README.md ] && cp README.md _site/README.md || true
+      - name: Configure Pages (enables Pages if not already on)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

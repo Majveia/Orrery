@@ -68,9 +68,9 @@
   <div id="chapter"><div class="ct"></div><div class="cr"></div><div class="cs"></div></div>
   <div id="shint">♪ enable sound for the full effect</div>
   <div id="curtain"></div>
-  <div class="title"><b>orrery</b><span>a hand-built universe · real laws</span></div>
+  <div class="title"><b>orrery</b><span>a hand-built universe · real laws · from worlds to the cosmic web</span></div>
   <div class="readout" id="readout"></div>
-  <div class="help" id="help">drag to orbit · scroll to zoom · click a world to follow · press F to fling new worlds</div>
+  <div class="help" id="help">drag to orbit · scroll to zoom · click to follow · S changes scale · F flings worlds</div>
   <div class="bar" id="bar">
     <button id="bPlay" title="pause / play (space)">❚❚</button>
     <button id="bSlow" title="slower ([)">«</button><span class="spd" id="spd">1.0×</span><button id="bFast" title="faster (])">»</button>
@@ -165,7 +165,8 @@ layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNrm; layout(locatio
 layout(location=4) in vec3 iColor; layout(location=5) in float iType; layout(location=6) in float iRot;
 uniform mat4 uVP; out vec3 vN; out vec3 vW; out vec3 vColor; out float vType;
 mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0.0,-s,0.0,1.0,0.0,s,0.0,c); }
-void main(){ mat3 R=rotY(iRot); vN=R*aNrm; vW=iCenter+R*(aPos*iRadius); vColor=iColor; vType=iType; gl_Position=uVP*vec4(vW,1.0); }`,
+void main(){ if(iType>6.5&&iType<8.0){ vN=aNrm; vW=iCenter; vColor=iColor; vType=iType; gl_Position=vec4(2.0,2.0,2.0,0.0); return; } /* dark halo: invisible mass */
+  mat3 R=rotY(iRot); vN=R*aNrm; vW=iCenter+R*(aPos*iRadius); vColor=iColor; vType=iType; gl_Position=uVP*vec4(vW,1.0); }`,
 HEAD+NOISE+`in vec3 vN; in vec3 vW; in vec3 vColor; in float vType; out vec4 o; uniform vec3 uStarPos; uniform vec3 uCamPos; uniform float uTime;
 void main(){ vec3 N=normalize(vN),Vv=normalize(uCamPos-vW);
   if(vType<-0.5){ float g=fbm(N*4.0+uTime*0.05),gg=fbm(N*12.0-uTime*0.08); vec3 c=vColor*(0.78+0.5*g)+vec3(0.25,0.12,0.0)*gg; c*=(0.8+0.7*pow(max(dot(N,Vv),0.0),0.4)); o=vec4(c*1.7,1.0); return; }
@@ -179,10 +180,19 @@ void main(){ vec3 N=normalize(vN),Vv=normalize(uCamPos-vW);
     emis+=vec3(1.0,0.78,0.42)*smoothstep(0.62,0.66,fbm(N*7.0))*step(0.55,land)*smoothstep(0.06,-0.16,dot(N,L))*0.9; }
   vec3 col=base*(0.05+diff); float rim=pow(1.0-max(dot(N,Vv),0.0),3.0); col+=rim*(vType>2.5?vec3(0.2,0.4,0.85):vec3(0.14,0.2,0.34))*(0.3+0.7*diff); col+=emis; o=vec4(col,1.0); }`);
 
-const astP=prog(HEAD+`layout(location=0) in vec3 aPos; uniform mat4 uVP; uniform vec3 uStarPos; uniform float uPtScale;
-out float vB; out float vSeed; float h1(float n){ return fract(sin(n)*43758.5453);}
-void main(){ vec4 cp=uVP*vec4(aPos,1.0); gl_Position=cp; float d=length(aPos-uStarPos); vB=clamp(70.0/(d*d),0.05,1.0); vSeed=h1(float(gl_VertexID)*0.137); gl_PointSize=clamp(uPtScale/max(cp.w,0.001),1.0,4.0); }`,
-HEAD+`in float vB; in float vSeed; out vec4 o; void main(){ vec2 q=gl_PointCoord*2.0-1.0; float r=dot(q,q); if(r>1.0) discard; float a=smoothstep(1.0,0.0,r); o=vec4(mix(vec3(0.5,0.45,0.4),vec3(0.72,0.62,0.5),vSeed)*(0.35+1.0*vB),a); }`);
+const astP=prog(HEAD+`layout(location=0) in vec3 aPos; layout(location=1) in vec3 aVel; uniform mat4 uVP; uniform vec3 uStarPos; uniform float uPtScale; uniform highp int uMode;
+out float vB; out float vSeed; out float vArm; float h1(float n){ return fract(sin(n)*43758.5453);}
+void main(){ vec4 cp=uVP*vec4(aPos,1.0); gl_Position=cp; vSeed=h1(float(gl_VertexID)*0.137); vArm=0.0;
+  if(uMode==1){ float sp=length(aVel); vB=clamp(0.16+sp*sp*7.0,0.06,1.5); }                                   // cosmic web: hot where infalling fast
+  else if(uMode==2){ float rr=length(aPos.xz)+0.001,th=atan(aPos.z,aPos.x); float arm=0.5+0.5*cos(2.0*(th-1.55*log(rr))); vArm=smoothstep(0.45,0.96,arm); vB=clamp(150.0/(rr*rr+45.0),0.05,1.0); } // galaxy: density-wave arms
+  else { float d=length(aPos-uStarPos); vB=clamp(70.0/(d*d),0.05,1.0); }                                       // solar/bh: lit by star
+  gl_PointSize=clamp(uPtScale/max(cp.w,0.001),1.0,4.0); }`,
+HEAD+`in float vB; in float vSeed; in float vArm; out vec4 o; uniform highp int uMode;
+void main(){ vec2 q=gl_PointCoord*2.0-1.0; float r=dot(q,q); if(r>1.0) discard; float a=smoothstep(1.0,0.0,r); vec3 base;
+  if(uMode==1){ base=mix(vec3(0.16,0.26,0.55),vec3(0.78,0.80,0.95),vSeed); base=mix(base,vec3(1.0,0.52,0.22),smoothstep(0.55,1.4,vB)); }
+  else if(uMode==2){ base=mix(vec3(0.45,0.58,1.0),vec3(1.0,0.82,0.55),vSeed)+vec3(0.7,0.28,0.5)*vArm; }
+  else base=mix(vec3(0.5,0.45,0.4),vec3(0.72,0.62,0.5),vSeed);
+  float br=(0.35+1.0*vB)*(uMode==2?(0.22+1.15*vArm):1.0); o=vec4(base*br,a); }`);
 
 const lineP=prog(HEAD+`layout(location=0) in vec3 aPos; layout(location=1) in float aAge; uniform mat4 uVP; out float vAge; void main(){ vAge=aAge; gl_Position=uVP*vec4(aPos,1.0);}`,
 HEAD+`in float vAge; out vec4 o; uniform vec3 uColor; uniform float uA; void main(){ o=vec4(uColor,pow(vAge,1.5)*uA); }`);
@@ -239,13 +249,15 @@ const astVAO=gl.createVertexArray(); gl.bindVertexArray(astVAO); gl.bindBuffer(g
 
 const updateProg=progTF(HEAD+`
 layout(location=0) in vec3 aPos; layout(location=1) in vec3 aVel;
-uniform float uDt,uEps2,uRs,uRel,uTime,uInner,uR0,uR1; uniform int uNum,uBHidx; uniform vec4 uBodies[64];
+uniform float uDt,uEps2,uRs,uRel,uTime,uInner,uR0,uR1,uHubble,uHalo,uNoRespawn; uniform int uNum,uBHidx; uniform vec4 uBodies[64];
 out vec3 vPosOut; out vec3 vVelOut; float h(float n){ return fract(sin(n)*43758.5453); }
 void main(){ vec3 p=aPos,v=aVel,a=vec3(0.0);
   for(int i=0;i<64;i++){ if(i>=uNum) break; vec3 bp=uBodies[i].xyz; float bm=uBodies[i].w; vec3 d=bp-p; float r2=dot(d,d)+uEps2,r=sqrt(r2),invf;
     if(uRel>0.5 && i==uBHidx){ float rr=max(r-uRs,0.15*uRs); invf=bm/(rr*rr*r); } else { invf=bm/(r2*r); } a+=d*invf; }
+  if(uHalo>0.0){ a-=uHalo*p/(dot(p,p)+1.4); }   // flat-rotation dark-matter halo (galaxy)
+  if(uHubble>0.0){ a+=uHubble*p; }              // gentle cosmological expansion (cosmic web)
   v+=a*uDt; p+=v*uDt; float R=length(p);
-  if(R>uR1*1.7 || R<uInner){ float id=float(gl_VertexID),ang=h(id*0.37+uTime)*6.2831853,rr=mix(uR0,uR1,h(id*1.91+uTime*0.7));
+  if(uNoRespawn<0.5 && (R>uR1*1.7 || R<uInner)){ float id=float(gl_VertexID),ang=h(id*0.37+uTime)*6.2831853,rr=mix(uR0,uR1,h(id*1.91+uTime*0.7));
     p=vec3(cos(ang)*rr,(h(id*2.3+uTime)-0.5)*1.5,sin(ang)*rr); float sp=sqrt(max(uBodies[0].w,0.01)/rr); v=vec3(-sin(ang)*sp,0.0,cos(ang)*sp); }
   vPosOut=p; vVelOut=v; }`, ['vPosOut','vVelOut']);
 const gpuOK=!!updateProg;
@@ -255,7 +267,8 @@ if(gpuOK){ for(let k=0;k<2;k++){ posBuf[k]=gl.createBuffer(); gl.bindBuffer(gl.A
   for(let k=0;k<2;k++){ updVAO[k]=gl.createVertexArray(); gl.bindVertexArray(updVAO[k]);
     gl.bindBuffer(gl.ARRAY_BUFFER,posBuf[k]);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ARRAY_BUFFER,velBuf[k]);gl.enableVertexAttribArray(1);gl.vertexAttribPointer(1,3,gl.FLOAT,false,0,0);
-    renVAO[k]=gl.createVertexArray(); gl.bindVertexArray(renVAO[k]); gl.bindBuffer(gl.ARRAY_BUFFER,posBuf[k]);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0); }
+    renVAO[k]=gl.createVertexArray(); gl.bindVertexArray(renVAO[k]); gl.bindBuffer(gl.ARRAY_BUFFER,posBuf[k]);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,velBuf[k]);gl.enableVertexAttribArray(1);gl.vertexAttribPointer(1,3,gl.FLOAT,false,0,0); }
   gl.bindVertexArray(null); tf=gl.createTransformFeedback(); }
 
 const trailPosB=vbo(new Float32Array(TRAILK*3),gl.DYNAMIC_DRAW),trailAgeB=vbo(new Float32Array(TRAILK),gl.DYNAMIC_DRAW);
@@ -284,6 +297,7 @@ addEventListener('resize',resize); resize();
 const Gc=1.0,EPS2=0.08*0.08,AST_EPS2=0.16*0.16;
 const B=[]; const aBig=new Float32Array(MAXB*3);
 let dirty=true, relativistic=true, perturbBelt=true, showTrails=true, preset='solar', beltSpec=[], fieldCount=(coarse?60000:200000), defaultDist=78, lensActive=false;
+let cosmicMode=false, galaxyMode=false, hubbleH=0.0, haloVf2=0.0;   // cosmological structure / galactic-disk dynamics
 function rebuildStatic(){ dirty=true; }
 function addBody(o){ if(B.length>=MAXB) return null; const b={pos:o.pos.slice(),vel:o.vel.slice(),mass:o.mass,radius:o.radius,color:o.color,type:o.type,spin:o.spin||0.004,rot:Math.random()*6.28,ring:o.ring||null,trail:o.trail!==false,launched:!!o.launched,trailPts:[]}; B.push(b); dirty=true; return b; }
 function isBH(){ return B[0]&&B[0].type>8.5; }
@@ -293,27 +307,52 @@ function zeroMomentum(){ let px=0,py=0,pz=0,M=0; for(const b of B){px+=b.mass*b.
 function placeOrbit(center,M,r,mass,radius,color,type,opt){ opt=opt||{}; const ph=opt.phase!==undefined?opt.phase:Math.random()*6.28,ecc=opt.ecc||0,incl=opt.incl||0;
   let p=[r*Math.cos(ph),0,r*Math.sin(ph)],v=V.scale([-Math.sin(ph),0,Math.cos(ph)],vcirc(r,M)*(1+ecc)); const c=Math.cos(incl),s=Math.sin(incl);
   p=[p[0],p[1]*c-p[2]*s,p[1]*s+p[2]*c]; v=[v[0],v[1]*c-v[2]*s,v[1]*s+v[2]*c]; return addBody({pos:V.add(center,p),vel:v,mass,radius,color,type,ring:opt.ring,spin:opt.spin,trail:opt.trail!==false}); }
+const TAU=6.2831853;
 function seedParticles(N,specs){ const pos=new Float32Array(N*3),vel=new Float32Array(N*3); let idx=0; const tot=specs.reduce((a,s)=>a+s.frac,0)||1;
   for(let si=0;si<specs.length;si++){ const sp=specs[si]; let cnt=(si===specs.length-1)?(N-idx):Math.floor(N*sp.frac/tot);
-    for(let i=0;i<cnt&&idx<N;i++){ const r=sp.r0+Math.random()*(sp.r1-sp.r0),ph=Math.random()*6.2831853,y=(Math.random()-0.5)*sp.thick,x=Math.cos(ph)*r,z=Math.sin(ph)*r,spd=Math.sqrt(sp.M/r)*(0.9+Math.random()*0.2),j=idx*3;
-      pos[j]=sp.cx+x;pos[j+1]=sp.cy+y;pos[j+2]=sp.cz+z; vel[j]=-Math.sin(ph)*spd;vel[j+1]=(Math.random()-0.5)*spd*0.04;vel[j+2]=Math.cos(ph)*spd; idx++; } }
+    for(let i=0;i<cnt&&idx<N;i++){ const j=idx*3;
+      if(sp.cosmic){ /* near-uniform primordial field in a sphere; tiny perturbations + slow Hubble outflow seed the web */
+        const rr=sp.r1*Math.cbrt(Math.random()),ct=Math.random()*2-1,st=Math.sqrt(1-ct*ct),pc=Math.random()*TAU,x=rr*st*Math.cos(pc),y=rr*ct,z=rr*st*Math.sin(pc),H=sp.H||0,pe=sp.pec||0;
+        pos[j]=x;pos[j+1]=y;pos[j+2]=z; vel[j]=H*x+(Math.random()-0.5)*pe; vel[j+1]=H*y+(Math.random()-0.5)*pe; vel[j+2]=H*z+(Math.random()-0.5)*pe;
+      } else if(sp.galaxy){ /* exponential-ish disk + bulge on a flat rotation curve (halo-supported) */
+        const r=sp.r0+Math.pow(Math.random(),1.7)*(sp.r1-sp.r0),ph=Math.random()*TAU,thk=sp.thick*(0.28+Math.exp(-r/(sp.r1*0.28))),y=(Math.random()-0.5)*thk,x=Math.cos(ph)*r,z=Math.sin(ph)*r,spd=Math.sqrt((sp.vf2||0)+sp.M/Math.max(r,0.6))*(0.96+Math.random()*0.07);
+        pos[j]=x;pos[j+1]=y;pos[j+2]=z; vel[j]=-Math.sin(ph)*spd; vel[j+1]=(Math.random()-0.5)*spd*0.03; vel[j+2]=Math.cos(ph)*spd;
+      } else { const r=sp.r0+Math.random()*(sp.r1-sp.r0),ph=Math.random()*TAU,y=(Math.random()-0.5)*sp.thick,x=Math.cos(ph)*r,z=Math.sin(ph)*r,spd=Math.sqrt(sp.M/r)*(0.9+Math.random()*0.2);
+        pos[j]=sp.cx+x;pos[j+1]=sp.cy+y;pos[j+2]=sp.cz+z; vel[j]=-Math.sin(ph)*spd;vel[j+1]=(Math.random()-0.5)*spd*0.04;vel[j+2]=Math.cos(ph)*spd; }
+      idx++; } }
   return {pos,vel,n:idx}; }
 
-function buildScene(p){ preset=p||preset; B.length=0; astCount=0; const O=[0,0,0];
-  if(preset==='solar'){ defaultDist=78;
+function moonsAround(host,specs){ if(!host) return; for(const m of specs){ const a=Math.random()*TAU,off=[Math.cos(a)*m[0],(Math.random()-0.5)*0.1,Math.sin(a)*m[0]];
+  addBody({pos:V.add(host.pos,off),vel:V.add(host.vel,V.scale([-Math.sin(a),0,Math.cos(a)],vcirc(m[0],host.mass))),mass:1e-6,radius:m[1],color:m[2],type:0,spin:0.01,trail:false}); } }
+function buildScene(p){ preset=p||preset; B.length=0; astCount=0; cosmicMode=false; galaxyMode=false; hubbleH=0.0; haloVf2=0.0; const O=[0,0,0];
+  if(preset==='solar'){ defaultDist=82;
     addBody({pos:O,vel:[0,0,0],mass:1.0,radius:3.4,color:[1.0,0.72,0.32],type:-1,spin:0.002,trail:false});
-    placeOrbit(O,1,8.5,1.2e-4,0.6,[0.6,0.45,0.38],0,{incl:0.04,ecc:0.04});
-    placeOrbit(O,1,13,3.0e-4,0.95,[0.55,0.75,0.95],3,{incl:0.02,ecc:0.02});
-    placeOrbit(O,1,19,5.0e-4,0.85,[0.7,0.55,0.5],0,{incl:0.07,ecc:0.06});
-    const g=placeOrbit(O,1,30,3.2e-3,1.5,[0.85,0.7,0.45],1,{incl:0.03,ring:{tilt:0.5,ca:[0.8,0.72,0.6],cb:[0.45,0.4,0.34]}});
-    placeOrbit(O,1,44,2.4e-3,1.35,[0.6,0.7,0.85],1,{incl:0.05,ecc:0.03});
-    placeOrbit(O,1,62,7.0e-4,0.95,[0.75,0.88,0.95],2,{incl:0.10,ecc:0.05});
-    if(g){ [[2.4,0.18,[0.7,0.7,0.72]],[3.4,0.22,[0.6,0.55,0.5]]].forEach((m,k)=>{ const a=k*2.1,off=[Math.cos(a)*m[0],0,Math.sin(a)*m[0]]; addBody({pos:V.add(g.pos,off),vel:V.add(g.vel,V.scale([-Math.sin(a),0,Math.cos(a)],vcirc(m[0],g.mass))),mass:1e-6,radius:m[1],color:m[2],type:0,spin:0.01}); }); }
-    beltSpec=[{cx:0,cy:0,cz:0,M:1,r0:22,r1:27,frac:0.72,thick:0.9},{cx:0,cy:0,cz:0,M:1,r0:70,r1:105,frac:0.28,thick:3.0}];
+    placeOrbit(O,1,6.0,6e-5,0.42,[0.62,0.55,0.48],0,{incl:0.12,ecc:0.10,trail:false});   // Mercury
+    placeOrbit(O,1,9.0,1.2e-4,0.62,[0.86,0.74,0.5],0,{incl:0.05,ecc:0.02,trail:false});   // Venus
+    const eb=placeOrbit(O,1,13.5,3.0e-4,0.78,[0.3,0.5,0.85],3,{incl:0.0,ecc:0.02});         // Earth
+    moonsAround(eb,[[1.6,0.21,[0.7,0.69,0.66]]]);                                            // Moon
+    placeOrbit(O,1,19,5.5e-5,0.55,[0.78,0.42,0.3],0,{incl:0.07,ecc:0.09,trail:false});       // Mars
+    const jb=placeOrbit(O,1,33,3.2e-3,1.55,[0.85,0.72,0.5],1,{incl:0.03,ring:{tilt:0.32,ca:[0.5,0.45,0.4],cb:[0.3,0.27,0.24]}}); // Jupiter
+    moonsAround(jb,[[2.3,0.16,[0.8,0.78,0.7]],[2.9,0.15,[0.6,0.62,0.66]],[3.6,0.19,[0.72,0.68,0.6]],[4.5,0.17,[0.55,0.55,0.58]]]); // Galilean
+    placeOrbit(O,1,47,2.4e-3,1.35,[0.9,0.82,0.62],1,{incl:0.05,ecc:0.03,ring:{tilt:0.46,ca:[0.92,0.84,0.66],cb:[0.5,0.45,0.36]}}); // Saturn
+    placeOrbit(O,1,59,6.5e-4,1.0,[0.6,0.82,0.85],2,{incl:0.08,ecc:0.02,ring:{tilt:1.45,ca:[0.4,0.6,0.66],cb:[0.2,0.32,0.4]}});   // Uranus (tipped)
+    placeOrbit(O,1,71,7.0e-4,0.98,[0.32,0.5,0.92],2,{incl:0.10,ecc:0.03});                  // Neptune
+    placeOrbit(O,1,92,4e-6,0.34,[0.8,0.88,0.95],2,{incl:0.55,ecc:-0.58,trail:true});         // a long-period comet
+    beltSpec=[{cx:0,cy:0,cz:0,M:1,r0:23,r1:29,frac:0.72,thick:0.9},{cx:0,cy:0,cz:0,M:1,r0:78,r1:114,frac:0.28,thick:3.4}];
+  } else if(preset==='galaxy'){ defaultDist=185; galaxyMode=true;
+    const Vf=0.92; haloVf2=Vf*Vf; const Mc=2.6;
+    addBody({pos:O,vel:[0,0,0],mass:Mc,radius:2.0,color:[1.0,0.86,0.55],type:-1,spin:0.001,trail:false}); // luminous nucleus
+    beltSpec=[{galaxy:true,M:Mc,vf2:haloVf2,r0:3.0,r1:108,thick:3.0,frac:1}];
   } else if(preset==='blackhole'){ defaultDist=70;
     addBody({pos:O,vel:[0,0,0],mass:3.0,radius:2.2,color:[0.02,0.02,0.03],type:9,spin:0.0,trail:false});
     placeOrbit(O,3,18,0.02,1.4,[1.0,0.8,0.5],-1,{incl:0.0,trail:true}); placeOrbit(O,3,32,7e-4,1.0,[0.6,0.7,0.9],3,{incl:0.06}); placeOrbit(O,3,46,1.4e-3,1.2,[0.7,0.6,0.5],1,{incl:0.04});
     beltSpec=[{cx:0,cy:0,cz:0,M:3,r0:9,r1:15,frac:0.5,thick:0.6},{cx:0,cy:0,cz:0,M:3,r0:55,r1:85,frac:0.5,thick:2.0}];
+  } else if(preset==='cosmic'){ defaultDist=300; cosmicMode=true; hubbleH=2.0e-5;   // expansion ≈ cancels mean infall (comoving frame); fluctuations grow → the cosmic web
+    const R=120,G=3;                                                                 // jittered 3³ lattice of dark-matter halos seeds filaments & voids
+    for(let ix=0;ix<G;ix++)for(let iy=0;iy<G;iy++)for(let iz=0;iz<G;iz++){ const cell=2*R/G,jit=cell*0.48;
+      addBody({pos:[-R+(ix+0.5)*cell+(Math.random()-0.5)*jit,-R+(iy+0.5)*cell+(Math.random()-0.5)*jit,-R+(iz+0.5)*cell+(Math.random()-0.5)*jit],
+        vel:[0,0,0],mass:0.8+Math.random()*1.5,radius:5.0,color:[0,0,0],type:7,spin:0,trail:false}); }
+    beltSpec=[{cosmic:true,r0:0,r1:R,H:0.0040,pec:0.012,frac:1,thick:0}];   // initial Hubble outflow ≈ sqrt(H)·r
   }
   zeroMomentum(); initParticles(); resetCam(); }
 
@@ -326,15 +365,18 @@ function accelBig(){ const n=B.length; for(let i=0;i<n;i++){aBig[i*3]=0;aBig[i*3
   for(let i=0;i<n;i++){ const pi=B[i].pos; for(let j=i+1;j<n;j++){ const pj=B[j].pos; const dx=pj[0]-pi[0],dy=pj[1]-pi[1],dz=pj[2]-pi[2],d2=dx*dx+dy*dy+dz*dz+EPS2,r=Math.sqrt(d2),inv=1/(d2*r),f=Gc*inv;
     let fi=f*B[j].mass, fj=f*B[i].mass;
     if(relativistic){ if(B[j].type>8.5){ const Rs=B[j].radius,rr=Math.max(r-Rs,0.15*Rs); fi=Gc*B[j].mass/(rr*rr*r); } else if(B[i].type>8.5){ const Rs=B[i].radius,rr=Math.max(r-Rs,0.15*Rs); fj=Gc*B[i].mass/(rr*rr*r); } }
-    aBig[i*3]+=fi*dx;aBig[i*3+1]+=fi*dy;aBig[i*3+2]+=fi*dz; aBig[j*3]-=fj*dx;aBig[j*3+1]-=fj*dy;aBig[j*3+2]-=fj*dz; } } }
+    aBig[i*3]+=fi*dx;aBig[i*3+1]+=fi*dy;aBig[i*3+2]+=fi*dz; aBig[j*3]-=fj*dx;aBig[j*3+1]-=fj*dy;aBig[j*3+2]-=fj*dz; } }
+  if(cosmicMode){ for(let i=0;i<n;i++){ const p=B[i].pos; aBig[i*3]+=hubbleH*p[0]; aBig[i*3+1]+=hubbleH*p[1]; aBig[i*3+2]+=hubbleH*p[2]; } } }
 function stepBig(h){ const n=B.length; accelBig(); const a0=aBig.slice();
   for(let i=0;i<n;i++){ const p=B[i].pos,v=B[i].vel; p[0]+=v[0]*h+0.5*a0[i*3]*h*h;p[1]+=v[1]*h+0.5*a0[i*3+1]*h*h;p[2]+=v[2]*h+0.5*a0[i*3+2]*h*h; }
   accelBig(); for(let i=0;i<n;i++){ const v=B[i].vel; v[0]+=0.5*(a0[i*3]+aBig[i*3])*h;v[1]+=0.5*(a0[i*3+1]+aBig[i*3+1])*h;v[2]+=0.5*(a0[i*3+2]+aBig[i*3+2])*h; } }
-function stepAst(h){ const n=B.length,kMax=perturbBelt?n:1;
+function stepAst(h){ const n=B.length,kMax=(perturbBelt||cosmicMode)?n:1;
   for(let k=0;k<astCount;k++){ const j=k*3; let x=aX[j],y=aX[j+1],z=aX[j+2],ax=0,ay=0,az=0,absorbed=false;
     for(let i=0;i<n;i++){ const p=B[i].pos,dx=p[0]-x,dy=p[1]-y,dz=p[2]-z,d2=dx*dx+dy*dy+dz*dz; if(d2<B[i].radius*B[i].radius){absorbed=true;break;}
       if(i<kMax){ const dd=d2+AST_EPS2,f=Gc*B[i].mass/(dd*Math.sqrt(dd)); ax+=f*dx;ay+=f*dy;az+=f*dz; } }
     if(absorbed){ const L=(astCount-1)*3; aX[j]=aX[L];aX[j+1]=aX[L+1];aX[j+2]=aX[L+2]; aV[j]=aV[L];aV[j+1]=aV[L+1];aV[j+2]=aV[L+2]; astCount--; k--; continue; }
+    if(galaxyMode){ const rc=x*x+y*y+z*z+1.4; ax-=haloVf2*x/rc; ay-=haloVf2*y/rc; az-=haloVf2*z/rc; }
+    if(cosmicMode){ ax+=hubbleH*x; ay+=hubbleH*y; az+=hubbleH*z; }
     const vx=aV[j]+ax*h,vy=aV[j+1]+ay*h,vz=aV[j+2]+az*h; aV[j]=vx;aV[j+1]=vy;aV[j+2]=vz; aX[j]=x+vx*h;aX[j+1]=y+vy*h;aX[j+2]=z+vz*h; } }
 function mergeBodies(){ const n=B.length;
   for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){ const a=B[i],b=B[j],dx=a.pos[0]-b.pos[0],dy=a.pos[1]-b.pos[1],dz=a.pos[2]-b.pos[2],d=Math.sqrt(dx*dx+dy*dy+dz*dz);
@@ -346,10 +388,11 @@ function mergeBodies(){ const n=B.length;
 
 function gpuUpdate(h,sub){ const n=Math.min(B.length,64); for(let i=0;i<n;i++){ bodyData[i*4]=B[i].pos[0];bodyData[i*4+1]=B[i].pos[1];bodyData[i*4+2]=B[i].pos[2];bodyData[i*4+3]=B[i].mass; }
   let bhi=-1,rs=1.0; for(let i=0;i<n;i++){ if(B[i].type>8.5){ bhi=i; rs=B[i].radius; break; } }
-  const effN=perturbBelt?n:1; let r0=20,r1=90; if(beltSpec.length){ r0=beltSpec[0].r0; r1=beltSpec[beltSpec.length-1].r1; } const inner=Math.max(1.0,bhi>=0?rs*1.05:1.0);
+  const effN=(perturbBelt||cosmicMode)?n:1; let r0=20,r1=90; if(beltSpec.length){ r0=beltSpec[0].r0; r1=beltSpec[beltSpec.length-1].r1; } const inner=Math.max(1.0,bhi>=0?rs*1.05:1.0);
   const U=updateProg.u; gl.useProgram(updateProg.p);
-  gl.uniform1i(U.uNum,effN); gl.uniform4fv(U.uBodies,bodyData.subarray(0,n*4)); gl.uniform1f(U.uEps2,EPS2); gl.uniform1i(U.uBHidx,bhi); gl.uniform1f(U.uRs,rs);
+  gl.uniform1i(U.uNum,effN); gl.uniform4fv(U.uBodies,bodyData.subarray(0,n*4)); gl.uniform1f(U.uEps2,cosmicMode?1.2:EPS2); gl.uniform1i(U.uBHidx,bhi); gl.uniform1f(U.uRs,rs);
   gl.uniform1f(U.uRel,relativistic?1:0); gl.uniform1f(U.uInner,inner); gl.uniform1f(U.uR0,r0); gl.uniform1f(U.uR1,r1);
+  gl.uniform1f(U.uHubble,cosmicMode?hubbleH:0.0); gl.uniform1f(U.uHalo,galaxyMode?haloVf2:0.0); gl.uniform1f(U.uNoRespawn,cosmicMode?1.0:0.0);
   const ns=performance.now()*0.001; gl.enable(gl.RASTERIZER_DISCARD);
   for(let s=0;s<sub;s++){ gl.uniform1f(U.uDt,h); gl.uniform1f(U.uTime,ns+s*0.13);
     gl.bindVertexArray(updVAO[cur]); gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK,tf);
@@ -401,7 +444,7 @@ function pickFollow(e){ const dir=rayThrough(...ndc(e)); let best=-1,bt=1e9; for
 /* ── controls / UI / seeds ── */
 const SPEEDS=[0.25,0.5,1,2,4,8]; let spdI=2,paused=false; const $=id=>document.getElementById(id);
 function setSpd(){ $('spd').textContent=SPEEDS[spdI].toFixed(2)+'×'; }
-const SYS=['solar','blackhole'],SYSL={solar:'solar',blackhole:'black hole'};
+const SYS=['solar','galaxy','blackhole','cosmic'],SYSL={solar:'solar',galaxy:'galaxy',blackhole:'black hole',cosmic:'cosmic web'};
 const COUNTS=(gpuOK?[50000,200000,1000000]:[5000,12000,20000]).filter(c=>c<=(gpuOK?GPU_MAX:MAXAST)); let countI=COUNTS.indexOf(fieldCount); if(countI<0) countI=Math.min(1,COUNTS.length-1);
 function fmtCount(c){ return c>=1000000?(c/1000000)+'M':(c/1000)+'k'; } function setCount(){ $('bCount').textContent=fmtCount(COUNTS[countI]); }
 $('bPlay').onclick=()=>{ paused=!paused; $('bPlay').textContent=paused?'▶':'❚❚'; };
@@ -415,8 +458,9 @@ $('bHole').onclick=()=>{ if(B[0]){ B[0].type=isBH()?-1:9; B[0].color=isBH()?[0.0
 $('bGR').onclick=()=>{ relativistic=!relativistic; $('bGR').classList.toggle('on',relativistic); };
 $('bReset').onclick=()=>{ buildScene(preset); };
 function r3(x){ return Number(x.toFixed(3)); }
-function serialize(){ const b=B.map(o=>[o.pos.map(r3),o.vel.map(r3),Number(o.mass.toPrecision(4)),r3(o.radius),o.color.map(r3),o.type,o.ring?[r3(o.ring.tilt),o.ring.ca.map(r3),o.ring.cb.map(r3)]:0,r3(o.spin),o.trail?1:0]); return btoa(JSON.stringify({p:preset,fc:fieldCount,gr:relativistic?1:0,pe:perturbBelt?1:0,bs:beltSpec,b})); }
+function serialize(){ const b=B.map(o=>[o.pos.map(r3),o.vel.map(r3),Number(o.mass.toPrecision(4)),r3(o.radius),o.color.map(r3),o.type,o.ring?[r3(o.ring.tilt),o.ring.ca.map(r3),o.ring.cb.map(r3)]:0,r3(o.spin),o.trail?1:0]); return btoa(JSON.stringify({p:preset,fc:fieldCount,gr:relativistic?1:0,pe:perturbBelt?1:0,cm:cosmicMode?1:0,gm:galaxyMode?1:0,hb:hubbleH,hv:haloVf2,dd:defaultDist,bs:beltSpec,b})); }
 function deserialize(str){ const o=JSON.parse(atob(str)); preset=o.p||'custom'; fieldCount=o.fc||fieldCount; relativistic=o.gr!==0; perturbBelt=o.pe!==0; beltSpec=o.bs||[];
+  cosmicMode=o.cm===1; galaxyMode=o.gm===1; hubbleH=o.hb||0; haloVf2=o.hv||0; if(o.dd) defaultDist=o.dd;
   B.length=0; for(const e of o.b){ const ring=e[6]?{tilt:e[6][0],ca:e[6][1],cb:e[6][2]}:null; addBody({pos:e[0],vel:e[1],mass:e[2],radius:e[3],color:e[4],type:e[5],ring,spin:e[7],trail:e[8]===1}); }
   initParticles(); resetCam(); rebuildStatic(); $('bGR').classList.toggle('on',relativistic); $('bPerturb').classList.toggle('on',perturbBelt); if(SYSL[preset]) $('bSys').textContent=SYSL[preset]; countI=COUNTS.indexOf(fieldCount); if(countI<0)countI=Math.min(1,COUNTS.length-1); setCount(); }
 $('bCopy').onclick=()=>{ const s=serialize(); if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(s).catch(()=>prompt('Copy this seed:',s)); } else prompt('Copy this seed:',s); };
@@ -452,8 +496,9 @@ function render(t){ if(followIdx>=0&&followIdx<B.length) target=B[followIdx].pos
   gl.enable(gl.DEPTH_TEST);gl.depthMask(true); gl.useProgram(bodyP.p); gl.uniformMatrix4fv(bodyP.u.uVP,false,VP); const lp=lightPos(); gl.uniform3fv(bodyP.u.uStarPos,lp);gl.uniform3fv(bodyP.u.uCamPos,eye);gl.uniform1f(bodyP.u.uTime,t);
   gl.bindVertexArray(bodyVAO);gl.drawElementsInstanced(gl.TRIANGLES,SPH.count,gl.UNSIGNED_SHORT,0,n);
   gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
-  if(gpuOK){ if(gpuCount>0){ gl.useProgram(astP.p);gl.uniformMatrix4fv(astP.u.uVP,false,VP);gl.uniform3fv(astP.u.uStarPos,lp);gl.uniform1f(astP.u.uPtScale,26*DPR); gl.bindVertexArray(renVAO[cur]);gl.drawArrays(gl.POINTS,0,gpuCount); } }
-  else if(astCount>0){ gl.bindBuffer(gl.ARRAY_BUFFER,astPosB);gl.bufferSubData(gl.ARRAY_BUFFER,0,aX,0,astCount*3); gl.useProgram(astP.p);gl.uniformMatrix4fv(astP.u.uVP,false,VP);gl.uniform3fv(astP.u.uStarPos,lp);gl.uniform1f(astP.u.uPtScale,26*DPR); gl.bindVertexArray(astVAO);gl.drawArrays(gl.POINTS,0,astCount); }
+  const partMode=cosmicMode?1:(galaxyMode?2:0), ptScale=(cosmicMode?34:galaxyMode?30:26)*DPR;
+  if(gpuOK){ if(gpuCount>0){ gl.useProgram(astP.p);gl.uniformMatrix4fv(astP.u.uVP,false,VP);gl.uniform3fv(astP.u.uStarPos,lp);gl.uniform1f(astP.u.uPtScale,ptScale);gl.uniform1i(astP.u.uMode,partMode); gl.bindVertexArray(renVAO[cur]);gl.drawArrays(gl.POINTS,0,gpuCount); } }
+  else if(astCount>0){ gl.bindBuffer(gl.ARRAY_BUFFER,astPosB);gl.bufferSubData(gl.ARRAY_BUFFER,0,aX,0,astCount*3); gl.useProgram(astP.p);gl.uniformMatrix4fv(astP.u.uVP,false,VP);gl.uniform3fv(astP.u.uStarPos,lp);gl.uniform1f(astP.u.uPtScale,ptScale);gl.uniform1i(astP.u.uMode,partMode); gl.bindVertexArray(astVAO);gl.drawArrays(gl.POINTS,0,astCount); }
   gl.useProgram(diskP.p);gl.uniformMatrix4fv(diskP.u.uVP,false,VP);gl.uniform1f(diskP.u.uTime,t); gl.bindVertexArray(ringVAO);
   for(let i=0;i<n;i++){ const b=B[i]; if(b.ring){ const M=m4mul(m4translate(b.pos),m4mul(m4rotX(b.ring.tilt),m4scale(b.radius))); gl.uniformMatrix4fv(diskP.u.uModel,false,M);gl.uniform1f(diskP.u.uStyle,0.0);gl.uniform3fv(diskP.u.uCA,b.ring.ca);gl.uniform3fv(diskP.u.uCB,b.ring.cb); gl.drawArrays(gl.TRIANGLE_STRIP,0,RING.count); } }
   if(isBH()&&!lensActive){ const b=B[0],M=m4mul(m4translate(b.pos),m4mul(m4rotX(0.42),m4scale(b.radius*2.6))); gl.uniformMatrix4fv(diskP.u.uModel,false,M);gl.uniform1f(diskP.u.uStyle,1.0);gl.uniform3fv(diskP.u.uCA,[1,0.4,0.1]);gl.uniform3fv(diskP.u.uCB,[0.6,0.7,1]); gl.drawArrays(gl.TRIANGLE_STRIP,0,RING.count); }
@@ -506,7 +551,9 @@ function updateIntroCam(t){
 }
 const CHAP={
   solar:    ['The Solar System','worlds bound to a single fire'],
-  blackhole:['The Black Hole','where the light itself is caught in orbit']
+  galaxy:   ['The Galaxy','a hundred billion suns turning on a dark wheel'],
+  blackhole:['The Black Hole','where the light itself is caught in orbit'],
+  cosmic:   ['The Cosmic Web','gravity and expansion, drawing the universe into filaments and voids']
 };
 function showChapter(title,sub){
   const c=document.getElementById('chapter'); if(!c) return;

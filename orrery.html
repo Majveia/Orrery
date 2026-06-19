@@ -305,7 +305,7 @@ const B=[]; const aBig=new Float32Array(MAXB*3);
 let dirty=true, relativistic=true, perturbBelt=true, showTrails=true, preset='solar', beltSpec=[], fieldCount=(coarse?60000:200000), defaultDist=78, lensActive=false;
 let cosmicMode=false, galaxyMode=false, hubbleH=0.0, haloVf2=0.0;   // cosmological structure / galactic-disk dynamics
 function rebuildStatic(){ dirty=true; }
-function addBody(o){ if(B.length>=MAXB) return null; const b={pos:o.pos.slice(),vel:o.vel.slice(),mass:o.mass,radius:o.radius,color:o.color,type:o.type,spin:o.spin||0.004,rot:Math.random()*6.28,ring:o.ring||null,trail:o.trail!==false,launched:!!o.launched,trailPts:[]}; B.push(b); dirty=true; return b; }
+function addBody(o){ if(B.length>=MAXB) return null; const b={pos:o.pos.slice(),vel:o.vel.slice(),mass:o.mass,radius:o.radius,color:o.color,type:o.type,spin:o.spin||0.004,rot:Math.random()*6.28,ring:o.ring||null,trail:o.trail!==false,launched:!!o.launched,feeder:!!o.feeder,trailPts:[]}; B.push(b); dirty=true; return b; }
 function isBH(){ return B[0]&&B[0].type>8.5; }
 function lightPos(){ let best=-1,br=-1; for(let i=0;i<B.length;i++){ const b=B[i]; if(b.type<-0.5&&b.radius>br){ br=b.radius; best=i; } } return best>=0?B[best].pos:B[0].pos; }
 function vcirc(r,m){ return Math.sqrt(Gc*m/r); }
@@ -360,7 +360,13 @@ function buildScene(p){ preset=p||preset; B.length=0; astCount=0; cosmicMode=fal
       addBody({pos:[-R+(ix+0.5)*cell+(Math.random()-0.5)*jit,-R+(iy+0.5)*cell+(Math.random()-0.5)*jit,-R+(iz+0.5)*cell+(Math.random()-0.5)*jit],
         vel:[0,0,0],mass:0.8+Math.random()*1.5,radius:5.0,color:[0,0,0],type:7,spin:0,trail:false}); }
     beltSpec=[{cosmic:true,r0:0,r1:R,H:0.0040,pec:0.012,frac:1,thick:0}];   // initial Hubble outflow ≈ sqrt(H)·r
+  } else if(preset==='nursery'){ defaultDist=100;   // a star-forming region: lifecycles + a binary inspiral
+    for(let k=0;k<11;k++){ const a=Math.random()*TAU,rr=6+Math.random()*22,m=0.5+Math.random()*2.6,phase=Math.random()*(2.4+13.0/(m+0.4));
+      addStar([Math.cos(a)*rr,(Math.random()-0.5)*10,Math.sin(a)*rr],[0,0,0],m,phase); }
+    spawnBinary([44,0,6]);
+    beltSpec=[{cx:0,cy:0,cz:0,M:0.02,r0:28,r1:50,frac:1,thick:9}];   // faint molecular gas of the cloud
   }
+  fx.length=0; pendingBirths.length=0; bhFeedT=4;
   zeroMomentum(); initParticles(); resetCam(); }
 
 function initParticles(){ const N=Math.min(fieldCount, gpuOK?GPU_MAX:MAXAST), s=seedParticles(N,beltSpec);
@@ -463,7 +469,7 @@ function pickFollow(e){ const dir=rayThrough(...ndc(e)); let best=-1,bt=1e9; for
 /* ── controls / UI / seeds ── */
 const SPEEDS=[0.25,0.5,1,2,4,8]; let spdI=2,paused=false; const $=id=>document.getElementById(id);
 function setSpd(){ $('spd').textContent=SPEEDS[spdI].toFixed(2)+'×'; }
-const SYS=['solar','galaxy','blackhole','cosmic'],SYSL={solar:'solar',galaxy:'galaxy',blackhole:'black hole',cosmic:'cosmic web'};
+const SYS=['solar','nursery','galaxy','blackhole','cosmic'],SYSL={solar:'solar',nursery:'nursery',galaxy:'galaxy',blackhole:'black hole',cosmic:'cosmic web'};
 const COUNTS=(gpuOK?[50000,200000,1000000]:[5000,12000,20000]).filter(c=>c<=(gpuOK?GPU_MAX:MAXAST)); let countI=COUNTS.indexOf(fieldCount); if(countI<0) countI=Math.min(1,COUNTS.length-1);
 function fmtCount(c){ return c>=1000000?(c/1000000)+'M':(c/1000)+'k'; } function setCount(){ $('bCount').textContent=fmtCount(COUNTS[countI]); }
 $('bPlay').onclick=()=>{ paused=!paused; $('bPlay').textContent=paused?'▶':'❚❚'; };
@@ -516,7 +522,7 @@ function bandAlpha(bd,L){ const lo=bd.logRange[0],hi=bd.logRange[1],fz=0.85;
 const SolarBand={ name:'solar', logRange:[10.6,14.0], localUnit:AU, alpha:1,
   /* dt/rate accepted for a future per-band time rate (Cosmic Calendar); M1 keeps the
      original fixed per-frame advance so the timestep is unchanged. */
-  update(dt,rate){ simulate(); updateTrails(); },
+  update(dt,rate){ simulate(); updateEthology(); updateTrails(); },
   render(alpha){ const n=B.length,t=frameT;
     for(let i=0;i<n;i++){ const b=B[i]; b.rot+=b.spin; instCenter[i*3]=b.pos[0];instCenter[i*3+1]=b.pos[1];instCenter[i*3+2]=b.pos[2]; instRot[i]=b.rot; }
     gl.bindBuffer(gl.ARRAY_BUFFER,iCenterB);gl.bufferSubData(gl.ARRAY_BUFFER,0,instCenter.subarray(0,n*3)); gl.bindBuffer(gl.ARRAY_BUFFER,iRotB);gl.bufferSubData(gl.ARRAY_BUFFER,0,instRot.subarray(0,n)); if(dirty) uploadStatic();
@@ -534,6 +540,7 @@ const SolarBand={ name:'solar', logRange:[10.6,14.0], localUnit:AU, alpha:1,
     if(showTrails){ gl.useProgram(lineP.p);gl.uniformMatrix4fv(lineP.u.uVP,false,VP);gl.uniform3fv(lineP.u.uAnchor,anchor);gl.uniform1f(lineP.u.uA,0.55);gl.uniform1f(lineP.u.uAlpha,alpha); gl.bindVertexArray(trailVAO);
       for(const b of B){ if(!b.trail||b.trailPts.length<6) continue; const cnt=b.trailPts.length/3; for(let q=0;q<b.trailPts.length;q++) trailScratch[q]=b.trailPts[q]; gl.bindBuffer(gl.ARRAY_BUFFER,trailPosB);gl.bufferSubData(gl.ARRAY_BUFFER,0,trailScratch,0,b.trailPts.length); gl.uniform3fv(lineP.u.uColor,b.color); gl.drawArrays(gl.LINE_STRIP,0,cnt); } }
     if(aiming&&aimA&&aimB&&V.len(V.sub(aimB,aimA))>0.4){ const pts=predictPath(aimA,flingVel(aimA,aimB)),cnt=pts.length/3; gl.useProgram(lineP.p);gl.uniformMatrix4fv(lineP.u.uVP,false,VP);gl.uniform3fv(lineP.u.uAnchor,anchor);gl.uniform1f(lineP.u.uA,0.95);gl.uniform1f(lineP.u.uAlpha,alpha);gl.uniform3fv(lineP.u.uColor,[1.0,0.82,0.45]); gl.bindVertexArray(predVAO);gl.bindBuffer(gl.ARRAY_BUFFER,predPosB);gl.bufferSubData(gl.ARRAY_BUFFER,0,new Float32Array(pts)); gl.drawArrays(gl.LINE_STRIP,0,cnt); }
+    drawFx(alpha);
     gl.disable(gl.BLEND);gl.depthMask(true); gl.disable(gl.DEPTH_TEST); } };
 
 /* ── THE SCALE LADDER ──
@@ -643,6 +650,73 @@ function drawHere(cam,alpha){ gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFu
   gl.useProgram(markerP.p);gl.uniformMatrix4fv(markerP.u.uVP,false,cam.vp);gl.uniform3fv(markerP.u.uAnchor,cam.anchor);gl.uniform1f(markerP.u.uPx,34.0*DPR);gl.uniform1f(markerP.u.uTime,frameT);gl.uniform1f(markerP.u.uAlpha,alpha);
   gl.bindVertexArray(oneVAO);gl.drawArrays(gl.POINTS,0,1);gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true); }
 
+/* ── ETHOLOGY: objects that behave — stellar lifecycle · binary inspiral · feeding ──
+   FX are world-placed billboard sprites (flash / supernova shell / planetary nebula /
+   ripple) that expand and fade; a state machine on each star drives birth→death. */
+const fx=[]; let pendingBirths=[], bhFeedT=0;
+function lerp(a,b,t){ return a+(b-a)*t; }
+function addFx(pos,kind,col,dur,r0,r1,ease){ fx.push({pos:pos.slice(),kind,col:col.slice(),dur,r0,r1,ease:!!ease,t:0,seed:Math.random()}); if(fx.length>48) fx.shift(); }
+const fxP=prog(HEAD+`uniform mat4 uVP; uniform vec3 uAnchor; uniform vec3 uPos; uniform float uRad; uniform float uPx;
+void main(){ vec4 cp=uVP*vec4(uPos-uAnchor,1.0); gl_Position=cp; gl_PointSize=clamp(uPx*uRad/max(cp.w,1e-4),2.0,560.0); }`,
+HEAD+NOISE+`out vec4 o; uniform float uLife; uniform int uKind; uniform vec3 uCol; uniform float uAlpha; uniform float uSeed;
+void main(){ vec2 q=gl_PointCoord*2.0-1.0; float r=length(q); if(r>1.0) discard; float a=0.0; vec3 c=uCol; float fade=1.0-uLife;
+  if(uKind==0){ a=pow(max(1.0-r,0.0),2.2)*fade; c=mix(vec3(1.0,0.96,0.88),uCol,0.45); }                                      // flash
+  else if(uKind==1){ float ring=smoothstep(0.20,0.0,abs(r-0.78)); float turb=0.5+0.75*fbm(vec3(q*4.5,uSeed*9.0)); a=ring*turb*fade; } // supernova shell
+  else if(uKind==2){ float glow=pow(max(1.0-r,0.0),1.5); float fil=0.4+0.85*fbm(vec3(q*3.2,uSeed*7.0)); a=glow*fil*fade*0.85; }      // planetary nebula
+  else { a=smoothstep(0.09,0.0,abs(r-0.86))*fade; }                                                                          // ripple / chirp
+  a*=uAlpha; if(a<0.008) discard; o=vec4(c*a*1.7, a); }`);
+function drawFx(alpha){ if(!fx.length) return; gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+  gl.useProgram(fxP.p); gl.uniformMatrix4fv(fxP.u.uVP,false,VP); gl.uniform3fv(fxP.u.uAnchor,anchor); gl.uniform1f(fxP.u.uPx,H/(2.0*tanHF)); gl.uniform1f(fxP.u.uAlpha,alpha); gl.bindVertexArray(oneVAO);
+  for(const f of fx){ const lf=Math.min(1,f.t/f.dur), rad=f.r0+(f.r1-f.r0)*(f.ease?Math.sqrt(lf):lf);
+    gl.uniform3fv(fxP.u.uPos,f.pos); gl.uniform1f(fxP.u.uRad,rad); gl.uniform1f(fxP.u.uLife,lf); gl.uniform1i(fxP.u.uKind,f.kind); gl.uniform3fv(fxP.u.uCol,f.col); gl.uniform1f(fxP.u.uSeed,f.seed); gl.drawArrays(gl.POINTS,0,1); }
+  gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true); }
+
+function starClass(m){ if(m>=2.0) return {col:[0.72,0.8,1.0],R:2.4,end:'sn'}; if(m>=1.3) return {col:[1.0,0.96,0.86],R:1.6,end:'sn'}; if(m>=0.8) return {col:[1.0,0.93,0.72],R:1.4,end:'pn'}; return {col:[1.0,0.62,0.36],R:0.95,end:'pn'}; }
+function addStar(pos,vel,mass,phase){ const cl=starClass(mass),Dp=2.4,Dm=Math.max(3.0,13.0/(mass+0.4)),Dg=Math.max(1.6,4.0/(mass+0.5));
+  const b=addBody({pos:pos.slice(),vel:(vel||[0,0,0]).slice(),mass:Math.min(mass*2e-4,3e-4),radius:0.5,color:[0.55,0.3,0.2],type:-1,spin:0.003,trail:false});
+  if(b) b.life={t:phase||0,rate:0.05,m0:mass,cl,Dp,Dm,Dg,stage:'proto'}; return b; }   // ~30 s lifespan at 1× (faster with speed control)
+function spawnBinary(center){ center=center||[0,0,0]; const sep=4.0,m=0.02,v=Math.sqrt(m/(2*sep));
+  const a=addBody({pos:[center[0]-sep*0.5,center[1],center[2]],vel:[0,0,-v],mass:m,radius:0.5,color:[0.82,0.86,1.0],type:-1,spin:0.02,trail:true});
+  const c=addBody({pos:[center[0]+sep*0.5,center[1],center[2]],vel:[0,0,v],mass:m,radius:0.45,color:[0.95,0.82,0.7],type:-1,spin:0.02,trail:true});
+  if(a) a.insp=center; if(c) c.insp=center; }
+function updateEthology(){ if(paused) return; const adv=0.16*SPEEDS[spdI];
+  for(let i=fx.length-1;i>=0;i--){ fx[i].t+=adv; if(fx[i].t>=fx[i].dur) fx.splice(i,1); }
+  for(let i=pendingBirths.length-1;i>=0;i--){ const pb=pendingBirths[i]; pb.t-=adv; if(pb.t<=0){ if(pb.binary) spawnBinary(pb.center); else addStar(pb.pos,[0,0,0],pb.m,0); pendingBirths.splice(i,1); } }
+  for(let i=0;i<B.length;i++){ const b=B[i],L=b.life; if(!L) continue; L.t+=adv*L.rate; const T1=L.Dp,T2=L.Dp+L.Dm,T3=L.Dp+L.Dm+L.Dg;
+    if(L.stage==='proto'){ const f=Math.min(1,L.t/T1); b.radius=0.4+f*L.cl.R; b.color=[lerp(1.0,L.cl.col[0],f),lerp(0.42,L.cl.col[1],f),lerp(0.22,L.cl.col[2],f)]; dirty=true;
+      if(L.t>=T1){ L.stage='main'; b.radius=L.cl.R; b.color=L.cl.col.slice(); addFx(b.pos,0,[1.0,0.9,0.7],1.2,L.cl.R*0.6,L.cl.R*2.4); } }
+    else if(L.stage==='main'){ if(L.t>=T2) L.stage='giant'; }
+    else if(L.stage==='giant'){ const f=Math.min(1,(L.t-T2)/L.Dg); b.radius=L.cl.R*(1.0+3.6*f); b.color=[lerp(L.cl.col[0],1.0,f),lerp(L.cl.col[1],0.42,f),lerp(L.cl.col[2],0.2,f)]; dirty=true;
+      if(L.t>=T3){ const end=L.cl.end,R=b.radius,pos=b.pos.slice();
+        if(end==='sn'){ addFx(pos,0,[1.0,0.95,0.9],1.6,R,R*9,true); addFx(pos,1,[1.0,0.55,0.4],9.0,R*2,R*16,true); aud&&aud.boom&&aud.boom(); }
+        else { addFx(pos,2,[0.5,0.85,0.95],11.0,R,R*9,true); addFx(pos,1,[0.7,0.5,0.95],8.0,R*1.5,R*11,true); aud&&aud.chime&&aud.chime(); }
+        pendingBirths.push({pos:[pos[0]+(Math.random()-0.5)*8,pos[1]+(Math.random()-0.5)*4,pos[2]+(Math.random()-0.5)*8],m:0.5+Math.random()*2.4,t:2.5+Math.random()*3.5});   // seeds the next generation
+        if(end==='sn'&&L.m0>=3.2){ b.type=9;b.radius=0.5;b.color=[0.02,0.02,0.03];b.spin=0.02;delete b.life; dirty=true; }            // a massive death leaves a black hole
+        else { if(followIdx>i)followIdx--; else if(followIdx===i)followIdx=-1; B.splice(i,1); i--; dirty=true; continue; }            // dies into the dust that makes the next
+      } }
+  }
+  const ins=[]; for(let i=0;i<B.length;i++) if(B[i].insp) ins.push(i);
+  if(ins.length>=2){ const a=B[ins[0]],c=B[ins[1]],dx=c.pos[0]-a.pos[0],dy=c.pos[1]-a.pos[1],dz=c.pos[2]-a.pos[2],sep=Math.hypot(dx,dy,dz);
+    if(sep>0.001){ const k=Math.min(0.4,0.013*adv),M=a.mass+c.mass,s=1-k,bo=1.0/Math.sqrt(s),
+        cx=(a.pos[0]*a.mass+c.pos[0]*c.mass)/M,cy=(a.pos[1]*a.mass+c.pos[1]*c.mass)/M,cz=(a.pos[2]*a.mass+c.pos[2]*c.mass)/M,
+        cvx=(a.vel[0]*a.mass+c.vel[0]*c.mass)/M,cvy=(a.vel[1]*a.mass+c.vel[1]*c.mass)/M,cvz=(a.vel[2]*a.mass+c.vel[2]*c.mass)/M;
+      for(const bb of [a,c]){ bb.pos[0]=cx+(bb.pos[0]-cx)*s;bb.pos[1]=cy+(bb.pos[1]-cy)*s;bb.pos[2]=cz+(bb.pos[2]-cz)*s;
+        bb.vel[0]=cvx+(bb.vel[0]-cvx)*bo;bb.vel[1]=cvy+(bb.vel[1]-cvy)*bo;bb.vel[2]=cvz+(bb.vel[2]-cvz)*bo; } }   // radiate orbital energy → inspiral + chirp
+    if(sep<(a.radius+c.radius)*1.4){ const pos=[(a.pos[0]+c.pos[0])*0.5,(a.pos[1]+c.pos[1])*0.5,(a.pos[2]+c.pos[2])*0.5],ctr=a.insp;
+      addFx(pos,0,[0.85,0.92,1.0],1.4,a.radius,a.radius*10,true); addFx(pos,3,[0.7,0.95,1.0],2.4,a.radius*2,a.radius*24,true); aud&&aud.chirp&&aud.chirp();
+      a.mass+=c.mass; a.radius=Math.cbrt(a.radius**3+c.radius**3); a.type=9; a.color=[0.02,0.02,0.03]; a.insp=false; a.trail=false;
+      const ci=B.indexOf(c); if(ci>=0){ B.splice(ci,1); if(followIdx>ci) followIdx--; else if(followIdx===ci) followIdx=-1; } dirty=true;
+      if(preset==='nursery'&&ctr) pendingBirths.push({binary:true,center:ctr,t:7.0}); }
+  }
+  // black-hole feeding: periodic infalling blobs trail accretion streams and flare at the horizon
+  if(preset==='blackhole'&&B[0]&&B[0].type>8.5){ const bh=B[0],Rs=bh.radius;
+    bhFeedT-=adv; if(bhFeedT<=0){ bhFeedT=5+Math.random()*7; const a=Math.random()*TAU,r=26+Math.random()*12,vc=vcirc(r,bh.mass)*0.55;
+      addBody({pos:[bh.pos[0]+Math.cos(a)*r,bh.pos[1]+(Math.random()-0.5)*4,bh.pos[2]+Math.sin(a)*r],vel:[-Math.sin(a)*vc,0,Math.cos(a)*vc],mass:1e-6,radius:0.22,color:[1.0,0.72,0.4],type:2,trail:true,launched:true,feeder:true}); }
+    for(let i=B.length-1;i>=1;i--){ const b=B[i]; if(!b.feeder) continue; const d=Math.hypot(b.pos[0]-bh.pos[0],b.pos[1]-bh.pos[1],b.pos[2]-bh.pos[2]);
+      if(d<Rs*2.2&&!b._flared){ b._flared=true; addFx([bh.pos[0],bh.pos[1],bh.pos[2]],0,[1.0,0.68,0.38],1.3,Rs*2,Rs*9,true); aud&&aud.chime&&aud.chime(); }
+      if(d>150){ B.splice(i,1); if(followIdx>i)followIdx--; else if(followIdx===i)followIdx=-1; } } }
+}
+
 const bands=[SolarBand, OortBand, NeighbourhoodBand, GalacticBand];   // adding a scale = one Band; the renderer loop is unchanged
 function updateScene(){ for(const bd of bands){ if(bd.alpha>0.001) bd.update(0,1); } }
 /* chapter card follows the dominant scale (band), not just the preset */
@@ -726,6 +800,7 @@ function updateIntroCam(t){
 }
 const CHAP={
   solar:    ['The Solar System','worlds bound to a single fire'],
+  nursery:  ['The Nursery','stars born, blazing, and dying into the dust that makes the next'],
   galaxy:   ['The Galaxy','a hundred billion suns turning on a dark wheel'],
   blackhole:['The Black Hole','where the light itself is caught in orbit'],
   cosmic:   ['The Cosmic Web','gravity and expansion, drawing the universe into filaments and voids']
@@ -791,7 +866,14 @@ function makeAudio(){
       else { master.gain.cancelScheduledValues(t); master.gain.setValueAtTime(master.gain.value,t); master.gain.linearRampToValueAtTime(0.0001,t+0.8); } },
     swell(amt){ if(!ctx||!soundOn) return; const t=ctx.currentTime, base=0.8;
       master.gain.cancelScheduledValues(t); master.gain.setValueAtTime(master.gain.value,t); master.gain.linearRampToValueAtTime(Math.min(1.25,base+amt),t+0.5); master.gain.linearRampToValueAtTime(base,t+3.0); bell(); },
-    chime(){ bell(); }
+    chime(){ bell(); },
+    boom(){ if(!ctx||!soundOn) return; const t=ctx.currentTime; const src=ctx.createBufferSource(); src.buffer=impulse(1.6,1.1);
+      const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(0.5,t+0.02); g.gain.exponentialRampToValueAtTime(0.0008,t+1.7);
+      const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.setValueAtTime(900,t); lp.frequency.exponentialRampToValueAtTime(70,t+1.3);
+      src.connect(lp); lp.connect(g); g.connect(reverb); g.connect(master); src.start(t); },
+    chirp(){ if(!ctx||!soundOn) return; const t=ctx.currentTime; const o=ctx.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(70,t); o.frequency.exponentialRampToValueAtTime(720,t+0.55);
+      const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(0.17,t+0.5); g.gain.exponentialRampToValueAtTime(0.0006,t+0.8);
+      o.connect(g); g.connect(reverb); g.connect(master); o.start(t); o.stop(t+0.9); }
   };
 }
 

@@ -20,11 +20,18 @@ into existing systems and watch their predicted trajectories.
   eccentric plunge. Planets can perturb the belt (n-body); worlds can collide
   and merge.
 
+- **Nursery** — *cosmic ethology.* A star-forming region where objects behave:
+  stars run a lifecycle (protostar → main sequence → red giant → **supernova**
+  or **planetary nebula**), each death seeding the dust that births the next;
+  a binary pair **inspirals**, speeding up to a **chirp** and merging into a
+  black hole; massive deaths leave black holes behind. Turn on sound for the
+  booms and chirps.
+
 - **Galaxy** — a differentially-rotating stellar disk on a *flat rotation
   curve* (a dark-matter halo term supplies the missing gravity), a luminous
   nucleus, and density-wave spiral arms lit like HII regions.
 
-- **Black hole** — a Schwarzschild black hole with a ray-marched accretion
+- **Black hole** — *feeding.* A Schwarzschild black hole with a ray-marched accretion
   disk, gravitational lensing, photon ring and shadow, and relativistic
   pericenter precession of the orbiting stars.
 

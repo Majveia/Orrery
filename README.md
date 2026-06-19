@@ -12,7 +12,22 @@ feedback, and the black hole bends light along real null geodesics. You can
 drag to orbit, scroll to zoom, click a world to follow it, and fling new worlds
 into existing systems and watch their predicted trajectories.
 
-## Scales (press **S** to travel between them)
+## Scales
+
+A single continuous zoom (scroll / pinch) travels the whole ladder — from a living
+cell (~10⁻⁴ m) out to the cosmic web (~10²¹ m) — with no hard cut. Pressing **S**
+jumps between *scenes* (different things to find at the solar scale).
+
+Zoom **in** past the planets and the ladder turns inward:
+
+- **A Living World** — a procedural planet: oceans, continents, weather, a terminator
+  with city lights on the night side, and the thin blue line of an atmosphere; it
+  fills the view as you descend toward the surface.
+- **The Biosphere** — life itself, rendered as a continuous cellular automaton
+  (Lenia) on a GPU float field: glowing organisms that grow, move, divide and
+  self-organize. Zoom to explore the pond.
+
+Scenes (press **S**):
 
 - **Solar** — the Sun and its worlds: Mercury through Neptune, the Galilean
   moons and Earth's Moon, ringed Saturn and a tipped, ring-girdled Uranus, a

@@ -136,8 +136,8 @@ const SKYFN=`vec3 skyCol(vec3 dir){ float n=fbm(dir*1.4+11.0),n2=fbm(dir*3.1-5.0
 
 const quad=vbo(new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]));
 const skyP=prog(HEAD+`layout(location=0) in vec2 aPos; out vec2 vUv; void main(){ vUv=aPos*0.5+0.5; gl_Position=vec4(aPos,0.999999,1.0);}`,
-HEAD+NOISE+SKYFN+`in vec2 vUv; out vec4 o; uniform vec3 uBL,uBR,uTL,uTR;
-void main(){ o=vec4(skyCol(normalize(mix(mix(uBL,uBR,vUv.x),mix(uTL,uTR,vUv.x),vUv.y))),1.0); }`);
+HEAD+NOISE+SKYFN+`in vec2 vUv; out vec4 o; uniform vec3 uBL,uBR,uTL,uTR; uniform float uDim;
+void main(){ o=vec4(skyCol(normalize(mix(mix(uBL,uBR,vUv.x),mix(uTL,uTR,vUv.x),vUv.y)))*uDim,1.0); }`);
 
 const geoP=prog(HEAD+`layout(location=0) in vec2 aPos; out vec2 vUv; void main(){ vUv=aPos*0.5+0.5; gl_Position=vec4(aPos,0.999999,1.0);}`,
 HEAD+NOISE+SKYFN+`in vec2 vUv; out vec4 o;
@@ -411,7 +411,7 @@ function uploadStatic(){ const n=B.length,rad=new Float32Array(n),col=new Float3
    The orbit camera is driven by it: each band derives its own local-frame distance from logScale. */
 const AU=1.495978707e11;                       // metres per orrery sim-unit (solar band local frame)
 const FOV=50*Math.PI/180, tanHF=Math.tan(FOV/2);
-const LOG_MIN=11.9, LOG_MAX=17.8;              // inner solar system → out past the stellar neighbourhood
+const LOG_MIN=11.9, LOG_MAX=21.3;              // inner solar system → the whole galaxy
 let camUnit=AU;                                // active band's metres-per-local-unit
 function distFromLog(L,u){ return Math.pow(10,L)/u/(2*tanHF); }              // camera distance, in local units
 function logFromDist(d,u){ return Math.log10(Math.max(d,1e-9)*2*tanHF*u); }
@@ -485,7 +485,8 @@ addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); wake();
   else if(k==='escape'){ followIdx=-1; } });
 
 /* ── draw helpers ── */
-function drawSky(c){ gl.useProgram(skyP.p); gl.uniform3fv(skyP.u.uBL,c[0]);gl.uniform3fv(skyP.u.uBR,c[1]);gl.uniform3fv(skyP.u.uTL,c[2]);gl.uniform3fv(skyP.u.uTR,c[3]); gl.bindVertexArray(quadVAO);gl.drawArrays(gl.TRIANGLES,0,6); }
+let skyDim=1.0;
+function drawSky(c){ gl.useProgram(skyP.p); gl.uniform3fv(skyP.u.uBL,c[0]);gl.uniform3fv(skyP.u.uBR,c[1]);gl.uniform3fv(skyP.u.uTL,c[2]);gl.uniform3fv(skyP.u.uTR,c[3]); gl.uniform1f(skyP.u.uDim,skyDim); gl.bindVertexArray(quadVAO);gl.drawArrays(gl.TRIANGLES,0,6); }
 function drawGeo(c){ let idx=-1; for(let i=0;i<B.length;i++) if(B[i].type>8.5){idx=i;break;} if(idx<0){ drawSky(c); return; } const b=B[idx],Rs=b.radius,N=[0,Math.cos(0.42),Math.sin(0.42)];
   gl.useProgram(geoP.p); gl.uniform3fv(geoP.u.uBL,c[0]);gl.uniform3fv(geoP.u.uBR,c[1]);gl.uniform3fv(geoP.u.uTL,c[2]);gl.uniform3fv(geoP.u.uTR,c[3]);
   gl.uniform3fv(geoP.u.uCam,eye);gl.uniform3fv(geoP.u.uBH,b.pos);gl.uniform1f(geoP.u.uRs,Rs);gl.uniform3fv(geoP.u.uDiskN,N);gl.uniform3fv(geoP.u.uDiskU,[1,0,0]);gl.uniform1f(geoP.u.uDin,Rs*2.4);gl.uniform1f(geoP.u.uDout,Rs*7.0);gl.uniform1f(geoP.u.uTime,performance.now()*0.001);
@@ -526,10 +527,60 @@ const SolarBand={ name:'solar', logRange:[10.6,14.0], localUnit:AU, alpha:1,
     if(aiming&&aimA&&aimB&&V.len(V.sub(aimB,aimA))>0.4){ const pts=predictPath(aimA,flingVel(aimA,aimB)),cnt=pts.length/3; gl.useProgram(lineP.p);gl.uniformMatrix4fv(lineP.u.uVP,false,VP);gl.uniform3fv(lineP.u.uAnchor,anchor);gl.uniform1f(lineP.u.uA,0.95);gl.uniform1f(lineP.u.uAlpha,alpha);gl.uniform3fv(lineP.u.uColor,[1.0,0.82,0.45]); gl.bindVertexArray(predVAO);gl.bindBuffer(gl.ARRAY_BUFFER,predPosB);gl.bufferSubData(gl.ARRAY_BUFFER,0,new Float32Array(pts)); gl.drawArrays(gl.LINE_STRIP,0,cnt); }
     gl.disable(gl.BLEND);gl.depthMask(true); gl.disable(gl.DEPTH_TEST); } };
 
-/* The scale ladder. M1 ships one band; further scales (e.g. a GalacticBand at
-   logRange ~[15,21]) register here — the renderer loop below needs no change.
-   A throwaway stub band above solar was used to verify this modularity in M1. */
-const bands=[SolarBand];
+/* ── THE SCALE LADDER ──
+   Outward bands, each self-contained: own GPU buffer + program, own local frame,
+   own camera mapping from the shared logScale. All bands share the Sun as world
+   origin, so transitions are pure scale cross-fades (no spatial pop). Floating
+   origin (anchor = each band's own eye) keeps float32 honest at every scale. */
+const LY=9.4607e15, KPC=3.0857e19;
+function randn(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(TAU*v); }
+function outerBandVP(localUnit){ const dS=distFromLog(logScaleS,localUnit),c=Math.cos(elS),s=Math.sin(elS),e=[dS*c*Math.sin(azS),dS*s,dS*c*Math.cos(azS)];
+  const proj=m4perspective(FOV,aspect,Math.max(1e-5,dS*0.008),Math.max(6,dS*4)),vrel=m4lookAt([0,0,0],V.scale(e,-1),upc); return {vp:m4mul(proj,vrel),anchor:e}; }
+
+/* —— stellar neighbourhood: the Sun becomes one star in a field of neighbours —— */
+const NB_N=coarse?1400:3200, nbPos=new Float32Array(NB_N*3), nbCol=new Float32Array(NB_N*4);
+const SPEC=[[0.74,[1.0,0.5,0.32],0.34],[0.12,[1.0,0.72,0.45],0.52],[0.07,[1.0,0.9,0.7],0.72],[0.04,[1.0,0.97,0.92],0.92],[0.02,[0.82,0.86,1.0],1.15],[0.01,[0.7,0.8,1.0],1.6]];
+function pickSpec(){ let x=Math.random(),a=0; for(const sp of SPEC){ a+=sp[0]; if(x<=a) return sp; } return SPEC[0]; }
+for(let i=0;i<NB_N;i++){ const r=60*Math.cbrt(Math.random()),ct=Math.random()*2-1,st=Math.sqrt(1-ct*ct),ph=Math.random()*TAU,sp=pickSpec();
+  nbPos[i*3]=r*st*Math.cos(ph); nbPos[i*3+1]=r*ct*0.6; nbPos[i*3+2]=r*st*Math.sin(ph);
+  nbCol[i*4]=sp[1][0];nbCol[i*4+1]=sp[1][1];nbCol[i*4+2]=sp[1][2];nbCol[i*4+3]=sp[2]*(0.7+0.6*Math.random()); }
+nbPos[0]=nbPos[1]=nbPos[2]=0; nbCol[0]=1.0;nbCol[1]=0.93;nbCol[2]=0.72;nbCol[3]=1.0;   // the Sun, at the common origin
+const nbPosB=vbo(nbPos),nbColB=vbo(nbCol),nbVAO=gl.createVertexArray();
+gl.bindVertexArray(nbVAO); gl.bindBuffer(gl.ARRAY_BUFFER,nbPosB);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
+gl.bindBuffer(gl.ARRAY_BUFFER,nbColB);gl.enableVertexAttribArray(1);gl.vertexAttribPointer(1,4,gl.FLOAT,false,0,0); gl.bindVertexArray(null);
+const nbP=prog(HEAD+`layout(location=0) in vec3 aPos; layout(location=1) in vec4 aCol; uniform mat4 uVP; uniform vec3 uAnchor; uniform float uPx; uniform float uTime; out vec4 vCol;
+void main(){ vec4 cp=uVP*vec4(aPos-uAnchor,1.0); gl_Position=cp; float tw=0.82+0.18*sin(uTime*1.6+float(gl_VertexID)*1.3); vCol=vec4(aCol.rgb,aCol.a*tw); gl_PointSize=clamp(uPx*(0.6+aCol.a)/max(cp.w,1e-5),1.8,11.0); }`,
+HEAD+`in vec4 vCol; out vec4 o; uniform float uAlpha; void main(){ vec2 q=gl_PointCoord*2.0-1.0; float r=dot(q,q); if(r>1.0) discard; float g=pow(max(1.0-r,0.0),1.5); o=vec4(vCol.rgb*(0.7+1.4*vCol.a), g*uAlpha); }`);
+const NeighbourhoodBand={ name:'neighbourhood', logRange:[14.6,18.2], localUnit:LY, alpha:0, update(){},
+  render(alpha){ const cam=outerBandVP(LY); gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+    gl.useProgram(nbP.p);gl.uniformMatrix4fv(nbP.u.uVP,false,cam.vp);gl.uniform3fv(nbP.u.uAnchor,cam.anchor);gl.uniform1f(nbP.u.uPx,0.016*H);gl.uniform1f(nbP.u.uTime,frameT);gl.uniform1f(nbP.u.uAlpha,alpha);
+    gl.bindVertexArray(nbVAO);gl.drawArrays(gl.POINTS,0,NB_N);gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true); } };
+
+/* —— the galaxy: a differentially-rotating spiral disk on a flat rotation curve,
+   density-wave arms, a luminous bulge; the Sun sits ~8 kpc out in a spiral arm —— */
+const GX_N=coarse?40000:140000, gxArr=new Float32Array(GX_N*4), NUC=[-8.0,0,0], PITCH=Math.tan(0.22);
+for(let i=0;i<GX_N;i++){ let r,z,th0,armness;
+  if(Math.random()<0.16){ r=Math.abs(randn())*1.5; z=randn()*0.45*Math.exp(-r/3.0); th0=Math.random()*TAU; armness=0.0; }
+  else { r=-3.6*Math.log(1-Math.random()*0.985); if(r>16) r=2+14*Math.random(); z=randn()*(0.16+0.12*Math.exp(-r/5.0));
+    if(Math.random()<0.6){ const arm=Math.random()<0.5?0:1; th0=Math.log(Math.max(r,0.05))/PITCH+arm*Math.PI+randn()*0.30; armness=0.75+0.25*Math.random(); }
+    else { th0=Math.random()*TAU; armness=0.10+0.18*Math.random(); } }
+  gxArr[i*4]=r; gxArr[i*4+1]=th0; gxArr[i*4+2]=z; gxArr[i*4+3]=armness; }
+const gxBuf=vbo(gxArr),gxVAO=gl.createVertexArray(); gl.bindVertexArray(gxVAO); gl.bindBuffer(gl.ARRAY_BUFFER,gxBuf);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,4,gl.FLOAT,false,0,0); gl.bindVertexArray(null);
+const gxP=prog(HEAD+`layout(location=0) in vec4 aRTZA; uniform mat4 uVP; uniform vec3 uAnchor; uniform vec3 uNuc; uniform float uTime; uniform float uPx; uniform float uOmega;
+out float vArm; out float vR; out float vSeed; float h1(float n){ return fract(sin(n)*43758.5453); }
+void main(){ float r=aRTZA.x, th=aRTZA.y + uOmega*uTime/(r+0.7); vec3 p=uNuc+vec3(cos(th)*r, aRTZA.z, sin(th)*r);
+  vArm=aRTZA.w; vR=r; vSeed=h1(float(gl_VertexID)*0.123); vec4 cp=uVP*vec4(p-uAnchor,1.0); gl_Position=cp; gl_PointSize=clamp(uPx/max(cp.w,1e-5),1.0,4.0); }`,
+HEAD+`in float vArm; in float vR; in float vSeed; out vec4 o; uniform float uAlpha;
+void main(){ vec2 q=gl_PointCoord*2.0-1.0; float rr=dot(q,q); if(rr>1.0) discard; float g=max(1.0-rr,0.0);
+  float bulge=smoothstep(3.0,0.3,vR); vec3 young=mix(vec3(0.5,0.62,1.0),vec3(1.0,0.5,0.72),0.5*vSeed); vec3 disk=vec3(0.55,0.62,0.82); vec3 old=vec3(1.0,0.82,0.52);
+  vec3 c=mix(mix(disk,young,vArm), old, bulge); float br=(0.22+0.95*vArm)+1.7*bulge;
+  o=vec4(c*g*br*uAlpha, g*uAlpha*(0.45+0.6*vArm+bulge)); }`);
+const GalacticBand={ name:'galactic', logRange:[18.0,21.3], localUnit:KPC, alpha:0, update(){},
+  render(alpha){ const cam=outerBandVP(KPC); gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+    gl.useProgram(gxP.p);gl.uniformMatrix4fv(gxP.u.uVP,false,cam.vp);gl.uniform3fv(gxP.u.uAnchor,cam.anchor);gl.uniform3fv(gxP.u.uNuc,NUC);gl.uniform1f(gxP.u.uTime,frameT);gl.uniform1f(gxP.u.uOmega,0.12);gl.uniform1f(gxP.u.uPx,2.4*DPR);gl.uniform1f(gxP.u.uAlpha,alpha);
+    gl.bindVertexArray(gxVAO);gl.drawArrays(gl.POINTS,0,GX_N);gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true); } };
+
+const bands=[SolarBand, NeighbourhoodBand, GalacticBand];   // adding a scale = one Band; the renderer loop is unchanged
 function updateScene(){ for(const bd of bands){ if(bd.alpha>0.001) bd.update(0,1); } }
 
 function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[followIdx].pos.slice();
@@ -542,6 +593,7 @@ function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[foll
   const farP=Math.max(4000,distS*2.0), proj=m4perspective(FOV,aspect,0.2,farP), viewRel=m4lookAt([0,0,0],V.sub(targetS,eye),upc);
   VP=m4mul(proj,viewRel); anchor=eye.slice(); lensActive=isBH()&&geoP.ok;
   for(const bd of bands) bd.alpha=bandAlpha(bd,logScaleS);
+  skyDim=1.0-0.82*Math.max(NeighbourhoodBand.alpha,GalacticBand.alpha);   // deepen the void as we leave the solar scale
   const tF=tanHF,cd=(x,y)=>[fwd[0]+x*tF*aspect*rgt[0]+y*tF*upc[0],fwd[1]+x*tF*aspect*rgt[1]+y*tF*upc[1],fwd[2]+x*tF*aspect*rgt[2]+y*tF*upc[2]],corners=[cd(-1,-1),cd(1,-1),cd(-1,1),cd(1,1)];
   gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFBO.f); gl.viewport(0,0,W,H); gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   gl.disable(gl.DEPTH_TEST);gl.depthMask(false);gl.disable(gl.BLEND); if(lensActive) drawGeo(corners); else drawSky(corners);     // shared background (renderer-owned)
@@ -557,8 +609,9 @@ function scaleAcross(L){ const m=Math.pow(10,L);
   if(m<1e9) return (m/1e3).toPrecision(2)+' km';
   if(m<1.6e13) return (m/AU).toPrecision(2)+' AU';
   if(m<3e16) return (m/9.4607e15).toPrecision(2)+' ly';
-  return (m/3.0857e16).toPrecision(2)+' pc'; }
-function scaleBand(L){ return L<11.8?'inner system':L<13.3?'solar system':L<14.7?'outer system':L<16.2?'stellar neighbourhood':'interstellar'; }
+  if(m<3e19) return (m/3.0857e16).toPrecision(2)+' pc';
+  return (m/3.0857e19).toPrecision(2)+' kpc'; }
+function scaleBand(L){ return L<11.8?'inner system':L<13.3?'solar system':L<14.7?'outer system':L<16.0?'oort cloud':L<18.4?'stellar neighbourhood':L<20.0?'spiral arm':'the galaxy'; }
 let frames=0,fpsT=performance.now(),fps=60;
 function loop(){ const t=performance.now()/1000; updateScene(); render(t);
   frames++; const now=performance.now(); if(now-fpsT>500){ fps=Math.round(frames*1000/(now-fpsT)); frames=0; fpsT=now; const pc=gpuOK?gpuCount:astCount;

@@ -82,5 +82,17 @@ keep float32 honest across huge spans:
 - **Floating origin** — geometry is drawn camera-relative (positions minus the camera
   anchor in the vertex shaders), so drawn coordinates stay near zero at any pan/zoom.
 
-Today one band ships — `SolarBand`, the orrery itself. Adding a scale later is one
-`Band` with a declared `logRange`; the renderer loop needs no change.
+Three bands ship today, and a single continuous zoom (scroll / pinch) travels between
+them with no hard cut:
+
+- **`SolarBand`** — the orrery itself (AU frame).
+- **`NeighbourhoodBand`** — the local stellar neighbourhood (light-year frame); past
+  the Oort cloud the Sun collapses to a single point of light, then becomes one star
+  in a field of ~3,000 neighbours coloured by spectral type.
+- **`GalacticBand`** — a differentially-rotating spiral galaxy on a flat rotation
+  curve (kiloparsec frame), density-wave arms and a luminous bulge, with the Sun ~8 kpc
+  out in a spiral arm.
+
+All three share the Sun as the common world origin, so the transition is pure scale
+cross-fade. Adding the next scale is one more `Band` with a declared `logRange`; the
+renderer loop needs no change.

@@ -76,6 +76,7 @@
     <button id="bSlow" title="slower ([)">«</button><span class="spd" id="spd">1.0×</span><button id="bFast" title="faster (])">»</button>
     <div class="sep"></div>
     <button id="bSys" title="change system (s)">solar</button>
+    <button id="bMap" title="top-down map view (m)">map</button>
     <button id="bCount" title="particle count (c)">200k</button>
     <div class="sep"></div>
     <button id="bFling" title="fling worlds (f)">fling: off</button>
@@ -445,7 +446,7 @@ cvs.addEventListener('pointermove',e=>{ if(touches.has(e.pointerId)) touches.set
   if(!down) return; const dx=e.clientX-lastX,dy=e.clientY-lastY; lastX=e.clientX;lastY=e.clientY; if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
   if(aiming){ const h=eclipticHit(rayThrough(...ndc(e))); if(h) aimB=h; return; }
   if(panning){ const k=distS*0.0016; target=[target[0]-(rgt[0]*dx-upc[0]*dy)*k,target[1]-(rgt[1]*dx-upc[1]*dy)*k,target[2]-(rgt[2]*dx-upc[2]*dy)*k]; followIdx=-1; }
-  else { az-=dx*0.005; el+=dy*0.005; el=Math.max(-1.4,Math.min(1.4,el)); } });
+  else { az-=dx*0.005; el+=dy*0.005; el=Math.max(-1.54,Math.min(1.54,el)); } });
 function up(e){ touches.delete(e.pointerId); if(touches.size<2) pinch=0; if(!down) return; down=false; document.body.classList.remove('drag');
   if(aiming){ aiming=false; if(aimA&&aimB&&V.len(V.sub(aimB,aimA))>0.4) doFling(aimA,aimB); aimA=aimB=null; return; } if(!moved&&!launchMode) pickFollow(e); }
 cvs.addEventListener('pointerup',up); cvs.addEventListener('pointercancel',up);
@@ -476,11 +477,12 @@ function deserialize(str){ const o=JSON.parse(atob(str)); preset=o.p||'custom'; 
   initParticles(); resetCam(); rebuildStatic(); $('bGR').classList.toggle('on',relativistic); $('bPerturb').classList.toggle('on',perturbBelt); if(SYSL[preset]) $('bSys').textContent=SYSL[preset]; countI=COUNTS.indexOf(fieldCount); if(countI<0)countI=Math.min(1,COUNTS.length-1); setCount(); }
 $('bCopy').onclick=()=>{ const s=serialize(); if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(s).catch(()=>prompt('Copy this seed:',s)); } else prompt('Copy this seed:',s); };
 $('bLoad').onclick=()=>{ const s=prompt('Paste a seed:'); if(s){ try{ deserialize(s.trim()); }catch(e){ console.error('seed',e); } } };
+let mapView=false; $('bMap').onclick=()=>{ mapView=!mapView; $('bMap').classList.toggle('on',mapView); wake(); };
 setSpd(); setCount();
 addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); wake();
   if(k===' '){ e.preventDefault(); $('bPlay').click(); } else if(k==='['){ $('bSlow').click(); } else if(k===']'){ $('bFast').click(); }
   else if(k==='t'){ $('bTrails').click(); } else if(k==='g'){ $('bPerturb').click(); } else if(k==='b'){ $('bHole').click(); } else if(k==='k'){ $('bGR').click(); }
-  else if(k==='f'){ $('bFling').click(); } else if(k==='s'){ $('bSys').click(); } else if(k==='c'){ $('bCount').click(); } else if(k==='r'){ $('bReset').click(); }
+  else if(k==='f'){ $('bFling').click(); } else if(k==='s'){ $('bSys').click(); } else if(k==='c'){ $('bCount').click(); } else if(k==='r'){ $('bReset').click(); } else if(k==='m'){ $('bMap').click(); }
   else if(k==='1'){ flingType='comet'; if(launchMode)$('bFling').textContent='fling: comet'; } else if(k==='2'){ flingType='world'; if(launchMode)$('bFling').textContent='fling: world'; } else if(k==='3'){ flingType='giant'; if(launchMode)$('bFling').textContent='fling: giant'; }
   else if(k==='escape'){ followIdx=-1; } });
 
@@ -559,22 +561,27 @@ const NeighbourhoodBand={ name:'neighbourhood', logRange:[14.6,18.2], localUnit:
 /* —— the galaxy: a differentially-rotating spiral disk on a flat rotation curve,
    density-wave arms, a luminous bulge; the Sun sits ~8 kpc out in a spiral arm —— */
 const GX_N=coarse?40000:140000, gxArr=new Float32Array(GX_N*4), NUC=[-8.0,0,0], PITCH=Math.tan(0.22);
-for(let i=0;i<GX_N;i++){ let r,z,th0,armness;
-  if(Math.random()<0.16){ r=Math.abs(randn())*1.5; z=randn()*0.45*Math.exp(-r/3.0); th0=Math.random()*TAU; armness=0.0; }
+function armOff(r,th0){ const a=Math.log(Math.max(r,0.05))/PITCH; let d=((th0-a)%Math.PI+Math.PI)%Math.PI; if(d>Math.PI/2) d-=Math.PI; return d; } // signed offset to nearest of 2 arms
+for(let i=0;i<GX_N;i++){ let r,z,th0,w;
+  if(Math.random()<0.16){ r=Math.abs(randn())*1.5; z=randn()*0.45*Math.exp(-r/3.0); th0=Math.random()*TAU; w=9.0; }   // bulge: no arm (sentinel)
   else { r=-3.6*Math.log(1-Math.random()*0.985); if(r>16) r=2+14*Math.random(); z=randn()*(0.16+0.12*Math.exp(-r/5.0));
-    if(Math.random()<0.6){ const arm=Math.random()<0.5?0:1; th0=Math.log(Math.max(r,0.05))/PITCH+arm*Math.PI+randn()*0.30; armness=0.75+0.25*Math.random(); }
-    else { th0=Math.random()*TAU; armness=0.10+0.18*Math.random(); } }
-  gxArr[i*4]=r; gxArr[i*4+1]=th0; gxArr[i*4+2]=z; gxArr[i*4+3]=armness; }
+    if(Math.random()<0.62){ const arm=Math.random()<0.5?0:1; th0=Math.log(Math.max(r,0.05))/PITCH+arm*Math.PI+randn()*0.30; }
+    else th0=Math.random()*TAU;
+    w=armOff(r,th0); }                                                                                                // signed arm offset (drives arms + dust lanes)
+  gxArr[i*4]=r; gxArr[i*4+1]=th0; gxArr[i*4+2]=z; gxArr[i*4+3]=w; }
 const gxBuf=vbo(gxArr),gxVAO=gl.createVertexArray(); gl.bindVertexArray(gxVAO); gl.bindBuffer(gl.ARRAY_BUFFER,gxBuf);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,4,gl.FLOAT,false,0,0); gl.bindVertexArray(null);
 const gxP=prog(HEAD+`layout(location=0) in vec4 aRTZA; uniform mat4 uVP; uniform vec3 uAnchor; uniform vec3 uNuc; uniform float uTime; uniform float uPx; uniform float uOmega;
-out float vArm; out float vR; out float vSeed; float h1(float n){ return fract(sin(n)*43758.5453); }
+out float vArm; out float vDust; out float vR; out float vSeed; float h1(float n){ return fract(sin(n)*43758.5453); }
 void main(){ float r=aRTZA.x, th=aRTZA.y + uOmega*uTime/(r+0.7); vec3 p=uNuc+vec3(cos(th)*r, aRTZA.z, sin(th)*r);
-  vArm=aRTZA.w; vR=r; vSeed=h1(float(gl_VertexID)*0.123); vec4 cp=uVP*vec4(p-uAnchor,1.0); gl_Position=cp; gl_PointSize=clamp(uPx/max(cp.w,1e-5),1.0,4.0); }`,
-HEAD+`in float vArm; in float vR; in float vSeed; out vec4 o; uniform float uAlpha;
+  float d=aRTZA.w; bool disk=d<8.0;
+  vArm = disk ? smoothstep(0.55,0.0,abs(d)) : 0.0;
+  vDust = disk ? smoothstep(0.13,0.0,abs(d+0.20)) : 0.0;            // dark lane hugging the inner edge of each arm
+  vR=r; vSeed=h1(float(gl_VertexID)*0.123); vec4 cp=uVP*vec4(p-uAnchor,1.0); gl_Position=cp; gl_PointSize=clamp(uPx/max(cp.w,1e-5),1.0,4.0); }`,
+HEAD+`in float vArm; in float vDust; in float vR; in float vSeed; out vec4 o; uniform float uAlpha;
 void main(){ vec2 q=gl_PointCoord*2.0-1.0; float rr=dot(q,q); if(rr>1.0) discard; float g=max(1.0-rr,0.0);
-  float bulge=smoothstep(3.0,0.3,vR); vec3 young=mix(vec3(0.5,0.62,1.0),vec3(1.0,0.5,0.72),0.5*vSeed); vec3 disk=vec3(0.55,0.62,0.82); vec3 old=vec3(1.0,0.82,0.52);
-  vec3 c=mix(mix(disk,young,vArm), old, bulge); float br=(0.22+0.95*vArm)+1.7*bulge;
-  o=vec4(c*g*br*uAlpha, g*uAlpha*(0.45+0.6*vArm+bulge)); }`);
+  float bulge=smoothstep(3.0,0.3,vR); float dustf=1.0-0.82*vDust; vec3 young=mix(vec3(0.5,0.62,1.0),vec3(1.0,0.5,0.72),0.5*vSeed); vec3 disk=vec3(0.55,0.62,0.82); vec3 old=vec3(1.0,0.82,0.52);
+  vec3 c=mix(mix(disk,young,vArm), old, bulge); float br=(0.22+0.95*vArm)*dustf+1.7*bulge;
+  o=vec4(c*g*br*uAlpha, g*uAlpha*((0.45+0.6*vArm)*dustf+bulge)); }`);
 const GalacticBand={ name:'galactic', logRange:[18.0,21.3], localUnit:KPC, alpha:0, update(){},
   render(alpha){ const cam=outerBandVP(KPC); gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
     gl.useProgram(gxP.p);gl.uniformMatrix4fv(gxP.u.uVP,false,cam.vp);gl.uniform3fv(gxP.u.uAnchor,cam.anchor);gl.uniform3fv(gxP.u.uNuc,NUC);gl.uniform1f(gxP.u.uTime,frameT);gl.uniform1f(gxP.u.uOmega,0.12);gl.uniform1f(gxP.u.uPx,2.4*DPR);gl.uniform1f(gxP.u.uAlpha,alpha);
@@ -606,7 +613,7 @@ function updateScene(){ for(const bd of bands){ if(bd.alpha>0.001) bd.update(0,1
 /* chapter card follows the dominant scale (band), not just the preset */
 const BCHAP={ oort:['The Oort Cloud',"a shell of sleeping comets at the edge of the Sun's reach"],
   neighbourhood:['The Stellar Neighbourhood','the Sun, one star adrift among thousands'],
-  galactic:['The Galaxy','you are here — 8 kpc from the core, out in a spiral arm'] };
+  galactic:['The Galaxy','you are here — 8 kpc from the core, in the Orion Arm'] };
 let lastChapKey='';
 function updateScaleChapter(){ if(introActive) return; let dom=bands[0]; for(const b of bands) if(b.alpha>dom.alpha) dom=b;
   const key=dom===SolarBand?('p:'+preset):('b:'+dom.name); if(key===lastChapKey) return; const first=lastChapKey===''; lastChapKey=key; if(first) return;
@@ -615,6 +622,7 @@ function updateScaleChapter(){ if(introActive) return; let dom=bands[0]; for(con
 function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[followIdx].pos.slice();
   if(introActive){ updateIntroCam(t); }
   else { if(!reduce&&performance.now()-lastInteract>4200&&followIdx<0&&!aiming) az+=0.0006;
+    if(mapView) el=1.52;   // top-down "map" framing (face-on to the disk plane)
     azS+=(az-azS)*0.12;elS+=(el-elS)*0.12;logScaleS+=(logScale-logScaleS)*0.12; distS=distFromLog(logScaleS,camUnit);
     targetS[0]+=(target[0]-targetS[0])*0.12;targetS[1]+=(target[1]-targetS[1])*0.12;targetS[2]+=(target[2]-targetS[2])*0.12; }
   camBasis();

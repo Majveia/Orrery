@@ -38,7 +38,7 @@ into existing systems and watch their predicted trajectories.
 ## Controls
 
 - **drag** orbit · **scroll / pinch** travel through scale · **click** follow a body · **Esc** stop following
-- **S** change system · **F** fling worlds (then **1/2/3** comet / world / giant)
+- **S** change system · **M** top-down "map" view · **F** fling worlds (then **1/2/3** comet / world / giant)
 - **space** pause · **[ ]** slower / faster · **T** trails · **G** belt self-gravity
 - **B** star ↔ black hole · **K** relativistic gravity · **C** particle count · **R** reset
 - **copy / load** serialize the whole universe to a seed string and share it
@@ -91,8 +91,9 @@ them with no hard cut:
 - **`NeighbourhoodBand`** — the local stellar neighbourhood (light-year frame); the Sun
   becomes one star in a field of ~3,000 neighbours coloured by spectral type.
 - **`GalacticBand`** — a differentially-rotating spiral galaxy on a flat rotation
-  curve (kiloparsec frame), density-wave arms and a luminous bulge, with the Sun ~8 kpc
-  out in a spiral arm — marked by a "you are here" reticle.
+  curve (kiloparsec frame), density-wave arms with dust lanes along their inner edges
+  and a luminous bulge, with the Sun ~8 kpc out in the Orion Arm — marked by a "you are
+  here" reticle. Press **M** for a face-on top-down "map" framing.
 
 All bands share the Sun as the common world origin, so the transition is pure scale
 cross-fade. The chapter card follows the dominant scale ("The Oort Cloud", "The Stellar

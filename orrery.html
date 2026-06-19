@@ -70,7 +70,7 @@
   <div id="curtain"></div>
   <div class="title"><b>orrery</b><span>a hand-built universe · real laws · from worlds to the cosmic web</span></div>
   <div class="readout" id="readout"></div>
-  <div class="help" id="help">drag to orbit · scroll to zoom · click to follow · S changes scale · F flings worlds</div>
+  <div class="help" id="help">drag to orbit · scroll to travel scales · click to follow · S changes system · F flings worlds</div>
   <div class="bar" id="bar">
     <button id="bPlay" title="pause / play (space)">❚❚</button>
     <button id="bSlow" title="slower ([)">«</button><span class="spd" id="spd">1.0×</span><button id="bFast" title="faster (])">»</button>
@@ -163,14 +163,14 @@ void main(){ vec3 dir=normalize(mix(mix(uBL,uBR,vUv.x),mix(uTL,uTR,vUv.x),vUv.y)
 const bodyP=prog(HEAD+`
 layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNrm; layout(location=2) in vec3 iCenter; layout(location=3) in float iRadius;
 layout(location=4) in vec3 iColor; layout(location=5) in float iType; layout(location=6) in float iRot;
-uniform mat4 uVP; out vec3 vN; out vec3 vW; out vec3 vColor; out float vType;
+uniform mat4 uVP; uniform vec3 uAnchor; out vec3 vN; out vec3 vW; out vec3 vColor; out float vType;
 mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0.0,-s,0.0,1.0,0.0,s,0.0,c); }
 void main(){ if(iType>6.5&&iType<8.0){ vN=aNrm; vW=iCenter; vColor=iColor; vType=iType; gl_Position=vec4(2.0,2.0,2.0,0.0); return; } /* dark halo: invisible mass */
-  mat3 R=rotY(iRot); vN=R*aNrm; vW=iCenter+R*(aPos*iRadius); vColor=iColor; vType=iType; gl_Position=uVP*vec4(vW,1.0); }`,
-HEAD+NOISE+`in vec3 vN; in vec3 vW; in vec3 vColor; in float vType; out vec4 o; uniform vec3 uStarPos; uniform vec3 uCamPos; uniform float uTime;
+  mat3 R=rotY(iRot); vN=R*aNrm; vW=iCenter+R*(aPos*iRadius); vColor=iColor; vType=iType; gl_Position=uVP*vec4(vW-uAnchor,1.0); }`,
+HEAD+NOISE+`in vec3 vN; in vec3 vW; in vec3 vColor; in float vType; out vec4 o; uniform vec3 uStarPos; uniform vec3 uCamPos; uniform float uTime; uniform float uAlpha;
 void main(){ vec3 N=normalize(vN),Vv=normalize(uCamPos-vW);
-  if(vType<-0.5){ float g=fbm(N*4.0+uTime*0.05),gg=fbm(N*12.0-uTime*0.08); vec3 c=vColor*(0.78+0.5*g)+vec3(0.25,0.12,0.0)*gg; c*=(0.8+0.7*pow(max(dot(N,Vv),0.0),0.4)); o=vec4(c*1.7,1.0); return; }
-  if(vType>8.5){ float rim=pow(1.0-max(dot(N,Vv),0.0),3.0); o=vec4(vec3(1.0,0.6,0.25)*rim*1.6,1.0); return; }
+  if(vType<-0.5){ float g=fbm(N*4.0+uTime*0.05),gg=fbm(N*12.0-uTime*0.08); vec3 c=vColor*(0.78+0.5*g)+vec3(0.25,0.12,0.0)*gg; c*=(0.8+0.7*pow(max(dot(N,Vv),0.0),0.4)); o=vec4(c*1.7,uAlpha); return; }
+  if(vType>8.5){ float rim=pow(1.0-max(dot(N,Vv),0.0),3.0); o=vec4(vec3(1.0,0.6,0.25)*rim*1.6,uAlpha); return; }
   vec3 L=normalize(uStarPos-vW); float diff=max(dot(N,L),0.0); vec3 base,emis=vec3(0.0);
   if(vType<0.5){ float n=fbm(N*5.0); base=mix(vec3(0.22,0.15,0.10),vec3(0.5,0.42,0.35),n); base=mix(base,vec3(0.13,0.11,0.10),smoothstep(0.6,0.9,fbm(N*11.0))); }
   else if(vType<1.5){ float bb=sin(N.y*9.0+fbm(N*3.0)*2.5); base=mix(vColor*0.65,vColor*1.18,0.5+0.5*bb); base=mix(base,vec3(0.92,0.86,0.78),smoothstep(0.78,0.92,fbm(N*6.0+3.0))*0.5); }
@@ -178,30 +178,30 @@ void main(){ vec3 N=normalize(vN),Vv=normalize(uCamPos-vW);
   else { float land=fbm(N*4.0); base=land>0.55?mix(vec3(0.14,0.4,0.18),vec3(0.55,0.5,0.32),smoothstep(0.55,0.78,land)):vec3(0.04,0.18,0.42);
     float cloud=smoothstep(0.58,0.82,fbm(N*3.0+uTime*0.008)); base=mix(base,vec3(0.9,0.92,0.95),cloud*0.45); base=mix(base,vec3(0.95),smoothstep(0.72,0.96,abs(N.y)));
     emis+=vec3(1.0,0.78,0.42)*smoothstep(0.62,0.66,fbm(N*7.0))*step(0.55,land)*smoothstep(0.06,-0.16,dot(N,L))*0.9; }
-  vec3 col=base*(0.05+diff); float rim=pow(1.0-max(dot(N,Vv),0.0),3.0); col+=rim*(vType>2.5?vec3(0.2,0.4,0.85):vec3(0.14,0.2,0.34))*(0.3+0.7*diff); col+=emis; o=vec4(col,1.0); }`);
+  vec3 col=base*(0.05+diff); float rim=pow(1.0-max(dot(N,Vv),0.0),3.0); col+=rim*(vType>2.5?vec3(0.2,0.4,0.85):vec3(0.14,0.2,0.34))*(0.3+0.7*diff); col+=emis; o=vec4(col,uAlpha); }`);
 
-const astP=prog(HEAD+`layout(location=0) in vec3 aPos; layout(location=1) in vec3 aVel; uniform mat4 uVP; uniform vec3 uStarPos; uniform float uPtScale; uniform highp int uMode;
+const astP=prog(HEAD+`layout(location=0) in vec3 aPos; layout(location=1) in vec3 aVel; uniform mat4 uVP; uniform vec3 uAnchor; uniform vec3 uStarPos; uniform float uPtScale; uniform highp int uMode;
 out float vB; out float vSeed; out float vArm; float h1(float n){ return fract(sin(n)*43758.5453);}
-void main(){ vec4 cp=uVP*vec4(aPos,1.0); gl_Position=cp; vSeed=h1(float(gl_VertexID)*0.137); vArm=0.0;
+void main(){ vec4 cp=uVP*vec4(aPos-uAnchor,1.0); gl_Position=cp; vSeed=h1(float(gl_VertexID)*0.137); vArm=0.0;
   if(uMode==1){ float sp=length(aVel); vB=clamp(0.16+sp*sp*7.0,0.06,1.5); }                                   // cosmic web: hot where infalling fast
   else if(uMode==2){ float rr=length(aPos.xz)+0.001,th=atan(aPos.z,aPos.x); float arm=0.5+0.5*cos(2.0*(th-1.55*log(rr))); vArm=smoothstep(0.45,0.96,arm); vB=clamp(150.0/(rr*rr+45.0),0.05,1.0); } // galaxy: density-wave arms
   else { float d=length(aPos-uStarPos); vB=clamp(70.0/(d*d),0.05,1.0); }                                       // solar/bh: lit by star
   gl_PointSize=clamp(uPtScale/max(cp.w,0.001),1.0,4.0); }`,
-HEAD+`in float vB; in float vSeed; in float vArm; out vec4 o; uniform highp int uMode;
+HEAD+`in float vB; in float vSeed; in float vArm; out vec4 o; uniform highp int uMode; uniform float uAlpha;
 void main(){ vec2 q=gl_PointCoord*2.0-1.0; float r=dot(q,q); if(r>1.0) discard; float a=smoothstep(1.0,0.0,r); vec3 base;
   if(uMode==1){ base=mix(vec3(0.16,0.26,0.55),vec3(0.78,0.80,0.95),vSeed); base=mix(base,vec3(1.0,0.52,0.22),smoothstep(0.55,1.4,vB)); }
   else if(uMode==2){ base=mix(vec3(0.45,0.58,1.0),vec3(1.0,0.82,0.55),vSeed)+vec3(0.7,0.28,0.5)*vArm; }
   else base=mix(vec3(0.5,0.45,0.4),vec3(0.72,0.62,0.5),vSeed);
-  float br=(0.35+1.0*vB)*(uMode==2?(0.22+1.15*vArm):1.0); o=vec4(base*br,a); }`);
+  float br=(0.35+1.0*vB)*(uMode==2?(0.22+1.15*vArm):1.0); o=vec4(base*br*uAlpha,a); }`);
 
-const lineP=prog(HEAD+`layout(location=0) in vec3 aPos; layout(location=1) in float aAge; uniform mat4 uVP; out float vAge; void main(){ vAge=aAge; gl_Position=uVP*vec4(aPos,1.0);}`,
-HEAD+`in float vAge; out vec4 o; uniform vec3 uColor; uniform float uA; void main(){ o=vec4(uColor,pow(vAge,1.5)*uA); }`);
+const lineP=prog(HEAD+`layout(location=0) in vec3 aPos; layout(location=1) in float aAge; uniform mat4 uVP; uniform vec3 uAnchor; out float vAge; void main(){ vAge=aAge; gl_Position=uVP*vec4(aPos-uAnchor,1.0);}`,
+HEAD+`in float vAge; out vec4 o; uniform vec3 uColor; uniform float uA; uniform float uAlpha; void main(){ o=vec4(uColor,pow(vAge,1.5)*uA*uAlpha); }`);
 
-const diskP=prog(HEAD+`layout(location=0) in vec3 aPos; layout(location=1) in float aT; uniform mat4 uVP; uniform mat4 uModel; out float vT; out vec2 vL; void main(){ vT=aT; vL=aPos.xz; gl_Position=uVP*(uModel*vec4(aPos,1.0)); }`,
-HEAD+NOISE+`in float vT; in vec2 vL; out vec4 o; uniform float uStyle; uniform float uTime; uniform vec3 uCA,uCB;
+const diskP=prog(HEAD+`layout(location=0) in vec3 aPos; layout(location=1) in float aT; uniform mat4 uVP; uniform mat4 uModel; uniform vec3 uAnchor; out float vT; out vec2 vL; void main(){ vT=aT; vL=aPos.xz; gl_Position=uVP*vec4((uModel*vec4(aPos,1.0)).xyz-uAnchor,1.0); }`,
+HEAD+NOISE+`in float vT; in vec2 vL; out vec4 o; uniform float uStyle; uniform float uTime; uniform vec3 uCA,uCB; uniform float uAlpha;
 void main(){ float ang=atan(vL.y,vL.x);
-  if(uStyle<0.5){ float bands=0.5+0.5*sin(vT*62.0+fbm(vec3(vT*30.0,ang*2.0,0.0))*3.0),gap=smoothstep(0.13,0.17,abs(fract(vT*5.0)-0.5)); o=vec4(mix(uCA,uCB,bands),bands*gap*(1.0-smoothstep(0.92,1.0,vT))*0.45);
-  } else { float turb=fbm(vec3(ang*2.0,vT*6.0,uTime*0.25)),br=(1.0-vT)*1.7+0.3,dop=0.5+0.5*cos(ang); vec3 c=mix(vec3(1.0,0.4,0.1),vec3(0.6,0.72,1.0),dop)*br*(0.55+0.85*turb); float edge=smoothstep(0.0,0.06,vT)*(1.0-smoothstep(0.86,1.0,vT)); o=vec4(c*edge,edge*0.9); } }`);
+  if(uStyle<0.5){ float bands=0.5+0.5*sin(vT*62.0+fbm(vec3(vT*30.0,ang*2.0,0.0))*3.0),gap=smoothstep(0.13,0.17,abs(fract(vT*5.0)-0.5)); o=vec4(mix(uCA,uCB,bands),bands*gap*(1.0-smoothstep(0.92,1.0,vT))*0.45*uAlpha);
+  } else { float turb=fbm(vec3(ang*2.0,vT*6.0,uTime*0.25)),br=(1.0-vT)*1.7+0.3,dop=0.5+0.5*cos(ang); vec3 c=mix(vec3(1.0,0.4,0.1),vec3(0.6,0.72,1.0),dop)*br*(0.55+0.85*turb); float edge=smoothstep(0.0,0.06,vT)*(1.0-smoothstep(0.86,1.0,vT)); o=vec4(c*edge,edge*0.9*uAlpha); } }`);
 
 const fsHead=HEAD+`in vec2 vUv; out vec4 o; uniform sampler2D uTex;`; const W7=[0.227,0.194,0.121,0.054,0.016];
 const brightP=prog(HEAD+`layout(location=0) in vec2 aPos; out vec2 vUv; void main(){ vUv=aPos*0.5+0.5; gl_Position=vec4(aPos,0.0,1.0);}`,
@@ -406,10 +406,21 @@ function uploadStatic(){ const n=B.length,rad=new Float32Array(n),col=new Float3
   for(let i=0;i<n;i++){ const b=B[i]; rad[i]=(lensActive&&b.type>8.5)?0.0:b.radius; col[i*3]=b.color[0];col[i*3+1]=b.color[1];col[i*3+2]=b.color[2]; typ[i]=b.type; }
   gl.bindBuffer(gl.ARRAY_BUFFER,iRadiusB);gl.bufferSubData(gl.ARRAY_BUFFER,0,rad); gl.bindBuffer(gl.ARRAY_BUFFER,iColorB);gl.bufferSubData(gl.ARRAY_BUFFER,0,col); gl.bindBuffer(gl.ARRAY_BUFFER,iTypeB);gl.bufferSubData(gl.ARRAY_BUFFER,0,typ); dirty=false; }
 
-/* ── camera ── */
-let az=0.7,el=0.5,dist=78,target=[0,0,0],azS=0.7,elS=0.5,distS=78,targetS=[0,0,0],followIdx=-1,lastInteract=performance.now();
-const FOV=50*Math.PI/180; let aspect=1,fwd=[0,0,1],rgt=[1,0,0],upc=[0,1,0],eye=[0,0,80],VP=new Float32Array(16);
-function resetCam(){ az=0.7;el=0.5;dist=defaultDist;target=[0,0,0];followIdx=-1; }
+/* ── camera ──
+   logScale = log10(metres visible across one screen-height) is the scale protagonist.
+   The orbit camera is driven by it: each band derives its own local-frame distance from logScale. */
+const AU=1.495978707e11;                       // metres per orrery sim-unit (solar band local frame)
+const FOV=50*Math.PI/180, tanHF=Math.tan(FOV/2);
+const LOG_MIN=11.9, LOG_MAX=17.8;              // inner solar system → out past the stellar neighbourhood
+let camUnit=AU;                                // active band's metres-per-local-unit
+function distFromLog(L,u){ return Math.pow(10,L)/u/(2*tanHF); }              // camera distance, in local units
+function logFromDist(d,u){ return Math.log10(Math.max(d,1e-9)*2*tanHF*u); }
+function clampLog(L){ return Math.max(LOG_MIN,Math.min(LOG_MAX,L)); }
+function smooth01(x){ x=x<0?0:x>1?1:x; return x*x*(3-2*x); }
+let az=0.7,el=0.5,target=[0,0,0],azS=0.7,elS=0.5,distS=78,targetS=[0,0,0],followIdx=-1,lastInteract=performance.now();
+let logScale=logFromDist(78,AU), logScaleS=logScale, frameT=0;
+let aspect=1,fwd=[0,0,1],rgt=[1,0,0],upc=[0,1,0],eye=[0,0,80],VP=new Float32Array(16),anchor=[0,0,0];
+function resetCam(){ az=0.7;el=0.5;target=[0,0,0];followIdx=-1; logScale=logScaleS=clampLog(logFromDist(defaultDist,camUnit)); distS=defaultDist; }
 function camBasis(){ aspect=W/H; const c=Math.cos(elS),s=Math.sin(elS); eye=[targetS[0]+distS*c*Math.sin(azS),targetS[1]+distS*s,targetS[2]+distS*c*Math.cos(azS)]; fwd=V.norm(V.sub(targetS,eye)); rgt=V.norm(V.cross(fwd,[0,1,0])); upc=V.cross(rgt,fwd); }
 function rayThrough(nx,ny){ const t=Math.tan(FOV/2); return V.norm([fwd[0]+nx*t*aspect*rgt[0]+ny*t*upc[0],fwd[1]+nx*t*aspect*rgt[1]+ny*t*upc[1],fwd[2]+nx*t*aspect*rgt[2]+ny*t*upc[2]]); }
 function ndc(e){ const r=cvs.getBoundingClientRect(); return [(e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height*2-1)]; }
@@ -430,7 +441,7 @@ function wake(){ document.body.classList.remove('idle'); clearTimeout(idleT); id
 cvs.addEventListener('pointerdown',e=>{ cvs.setPointerCapture(e.pointerId); touches.set(e.pointerId,[e.clientX,e.clientY]); down=true;moved=false;lastX=e.clientX;lastY=e.clientY;panning=e.shiftKey;wake();document.body.classList.add('drag');
   if(launchMode){ const h=eclipticHit(rayThrough(...ndc(e))); if(h){aiming=true;aimA=h;aimB=h.slice();} } });
 cvs.addEventListener('pointermove',e=>{ if(touches.has(e.pointerId)) touches.set(e.pointerId,[e.clientX,e.clientY]); wake();
-  if(touches.size===2){ const v=[...touches.values()],d=Math.hypot(v[0][0]-v[1][0],v[0][1]-v[1][1]); if(pinch>0){dist*=pinch/d;dist=Math.max(7,Math.min(620,dist));} pinch=d; return; }
+  if(touches.size===2){ const v=[...touches.values()],d=Math.hypot(v[0][0]-v[1][0],v[0][1]-v[1][1]); if(pinch>0&&d>0){ logScale=clampLog(logScale+Math.log10(pinch/d)); } pinch=d; return; }
   if(!down) return; const dx=e.clientX-lastX,dy=e.clientY-lastY; lastX=e.clientX;lastY=e.clientY; if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
   if(aiming){ const h=eclipticHit(rayThrough(...ndc(e))); if(h) aimB=h; return; }
   if(panning){ const k=distS*0.0016; target=[target[0]-(rgt[0]*dx-upc[0]*dy)*k,target[1]-(rgt[1]*dx-upc[1]*dy)*k,target[2]-(rgt[2]*dx-upc[2]*dy)*k]; followIdx=-1; }
@@ -438,7 +449,7 @@ cvs.addEventListener('pointermove',e=>{ if(touches.has(e.pointerId)) touches.set
 function up(e){ touches.delete(e.pointerId); if(touches.size<2) pinch=0; if(!down) return; down=false; document.body.classList.remove('drag');
   if(aiming){ aiming=false; if(aimA&&aimB&&V.len(V.sub(aimB,aimA))>0.4) doFling(aimA,aimB); aimA=aimB=null; return; } if(!moved&&!launchMode) pickFollow(e); }
 cvs.addEventListener('pointerup',up); cvs.addEventListener('pointercancel',up);
-cvs.addEventListener('wheel',e=>{ e.preventDefault(); dist*=Math.exp(e.deltaY*0.0011); dist=Math.max(7,Math.min(620,dist)); wake(); },{passive:false});
+cvs.addEventListener('wheel',e=>{ e.preventDefault(); logScale=clampLog(logScale+e.deltaY*0.0011/Math.LN10); wake(); },{passive:false});
 function pickFollow(e){ const dir=rayThrough(...ndc(e)); let best=-1,bt=1e9; for(let i=0;i<B.length;i++){ const b=B[i],oc=V.sub(eye,b.pos),A=V.dot(dir,dir),bq=2*V.dot(oc,dir),cq=V.dot(oc,oc)-(b.radius*1.6)**2,disc=bq*bq-4*A*cq; if(disc>0){ const t=(-bq-Math.sqrt(disc))/(2*A); if(t>0&&t<bt){bt=t;best=i;} } } if(best>=0) followIdx=best; else {followIdx=-1;target=[0,0,0];} }
 
 /* ── controls / UI / seeds ── */
@@ -483,39 +494,75 @@ function updateTrails(){ for(const b of B){ if(!b.trail) continue; b.trailPts.pu
 function simulate(){ if(paused) return; const adv=0.16*SPEEDS[spdI],sub=Math.max(1,Math.min(6,Math.ceil(adv/0.06))),h=adv/sub;
   for(let s=0;s<sub;s++) stepBig(h); if(gpuOK) gpuUpdate(h,sub); else for(let s=0;s<sub;s++) stepAst(h); mergeBodies(); }
 
-function render(t){ if(followIdx>=0&&followIdx<B.length) target=B[followIdx].pos.slice();
+/* ── BAND ARCHITECTURE ──
+   A band is a self-contained sim+render module, alive only near its scale.
+   Contract: {name, logRange:[lo,hi], localUnit, update(dt,rate), render(alpha)}.
+   The renderer owns the camera, the shared background, and the post chain;
+   bands draw geometry (camera-relative, alpha-faded) into the shared HDR target. */
+function bandAlpha(bd,L){ const lo=bd.logRange[0],hi=bd.logRange[1],fz=0.85;
+  if(L>=lo&&L<=hi) return 1;
+  return L<lo ? smooth01((L-(lo-fz))/fz) : smooth01(((hi+fz)-L)/fz); }
+
+const SolarBand={ name:'solar', logRange:[10.6,14.0], localUnit:AU, alpha:1,
+  /* dt/rate accepted for a future per-band time rate (Cosmic Calendar); M1 keeps the
+     original fixed per-frame advance so the timestep is unchanged. */
+  update(dt,rate){ simulate(); updateTrails(); },
+  render(alpha){ const n=B.length,t=frameT;
+    for(let i=0;i<n;i++){ const b=B[i]; b.rot+=b.spin; instCenter[i*3]=b.pos[0];instCenter[i*3+1]=b.pos[1];instCenter[i*3+2]=b.pos[2]; instRot[i]=b.rot; }
+    gl.bindBuffer(gl.ARRAY_BUFFER,iCenterB);gl.bufferSubData(gl.ARRAY_BUFFER,0,instCenter.subarray(0,n*3)); gl.bindBuffer(gl.ARRAY_BUFFER,iRotB);gl.bufferSubData(gl.ARRAY_BUFFER,0,instRot.subarray(0,n)); if(dirty) uploadStatic();
+    const lp=lightPos();
+    gl.enable(gl.DEPTH_TEST);gl.depthMask(true); if(alpha>=0.999){ gl.disable(gl.BLEND); } else { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); }
+    gl.useProgram(bodyP.p); gl.uniformMatrix4fv(bodyP.u.uVP,false,VP); gl.uniform3fv(bodyP.u.uAnchor,anchor); gl.uniform3fv(bodyP.u.uStarPos,lp);gl.uniform3fv(bodyP.u.uCamPos,eye);gl.uniform1f(bodyP.u.uTime,t);gl.uniform1f(bodyP.u.uAlpha,alpha);
+    gl.bindVertexArray(bodyVAO);gl.drawElementsInstanced(gl.TRIANGLES,SPH.count,gl.UNSIGNED_SHORT,0,n);
+    gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+    const partMode=cosmicMode?1:(galaxyMode?2:0), ptScale=(cosmicMode?34:galaxyMode?30:26)*DPR;
+    if(gpuOK){ if(gpuCount>0){ gl.useProgram(astP.p);gl.uniformMatrix4fv(astP.u.uVP,false,VP);gl.uniform3fv(astP.u.uAnchor,anchor);gl.uniform3fv(astP.u.uStarPos,lp);gl.uniform1f(astP.u.uPtScale,ptScale);gl.uniform1i(astP.u.uMode,partMode);gl.uniform1f(astP.u.uAlpha,alpha); gl.bindVertexArray(renVAO[cur]);gl.drawArrays(gl.POINTS,0,gpuCount); } }
+    else if(astCount>0){ gl.bindBuffer(gl.ARRAY_BUFFER,astPosB);gl.bufferSubData(gl.ARRAY_BUFFER,0,aX,0,astCount*3); gl.useProgram(astP.p);gl.uniformMatrix4fv(astP.u.uVP,false,VP);gl.uniform3fv(astP.u.uAnchor,anchor);gl.uniform3fv(astP.u.uStarPos,lp);gl.uniform1f(astP.u.uPtScale,ptScale);gl.uniform1i(astP.u.uMode,partMode);gl.uniform1f(astP.u.uAlpha,alpha); gl.bindVertexArray(astVAO);gl.drawArrays(gl.POINTS,0,astCount); }
+    gl.useProgram(diskP.p);gl.uniformMatrix4fv(diskP.u.uVP,false,VP);gl.uniform3fv(diskP.u.uAnchor,anchor);gl.uniform1f(diskP.u.uTime,t);gl.uniform1f(diskP.u.uAlpha,alpha); gl.bindVertexArray(ringVAO);
+    for(let i=0;i<n;i++){ const b=B[i]; if(b.ring){ const M=m4mul(m4translate(b.pos),m4mul(m4rotX(b.ring.tilt),m4scale(b.radius))); gl.uniformMatrix4fv(diskP.u.uModel,false,M);gl.uniform1f(diskP.u.uStyle,0.0);gl.uniform3fv(diskP.u.uCA,b.ring.ca);gl.uniform3fv(diskP.u.uCB,b.ring.cb); gl.drawArrays(gl.TRIANGLE_STRIP,0,RING.count); } }
+    if(isBH()&&!lensActive){ const b=B[0],M=m4mul(m4translate(b.pos),m4mul(m4rotX(0.42),m4scale(b.radius*2.6))); gl.uniformMatrix4fv(diskP.u.uModel,false,M);gl.uniform1f(diskP.u.uStyle,1.0);gl.uniform3fv(diskP.u.uCA,[1,0.4,0.1]);gl.uniform3fv(diskP.u.uCB,[0.6,0.7,1]); gl.drawArrays(gl.TRIANGLE_STRIP,0,RING.count); }
+    if(showTrails){ gl.useProgram(lineP.p);gl.uniformMatrix4fv(lineP.u.uVP,false,VP);gl.uniform3fv(lineP.u.uAnchor,anchor);gl.uniform1f(lineP.u.uA,0.55);gl.uniform1f(lineP.u.uAlpha,alpha); gl.bindVertexArray(trailVAO);
+      for(const b of B){ if(!b.trail||b.trailPts.length<6) continue; const cnt=b.trailPts.length/3; for(let q=0;q<b.trailPts.length;q++) trailScratch[q]=b.trailPts[q]; gl.bindBuffer(gl.ARRAY_BUFFER,trailPosB);gl.bufferSubData(gl.ARRAY_BUFFER,0,trailScratch,0,b.trailPts.length); gl.uniform3fv(lineP.u.uColor,b.color); gl.drawArrays(gl.LINE_STRIP,0,cnt); } }
+    if(aiming&&aimA&&aimB&&V.len(V.sub(aimB,aimA))>0.4){ const pts=predictPath(aimA,flingVel(aimA,aimB)),cnt=pts.length/3; gl.useProgram(lineP.p);gl.uniformMatrix4fv(lineP.u.uVP,false,VP);gl.uniform3fv(lineP.u.uAnchor,anchor);gl.uniform1f(lineP.u.uA,0.95);gl.uniform1f(lineP.u.uAlpha,alpha);gl.uniform3fv(lineP.u.uColor,[1.0,0.82,0.45]); gl.bindVertexArray(predVAO);gl.bindBuffer(gl.ARRAY_BUFFER,predPosB);gl.bufferSubData(gl.ARRAY_BUFFER,0,new Float32Array(pts)); gl.drawArrays(gl.LINE_STRIP,0,cnt); }
+    gl.disable(gl.BLEND);gl.depthMask(true); gl.disable(gl.DEPTH_TEST); } };
+
+/* The scale ladder. M1 ships one band; further scales (e.g. a GalacticBand at
+   logRange ~[15,21]) register here — the renderer loop below needs no change.
+   A throwaway stub band above solar was used to verify this modularity in M1. */
+const bands=[SolarBand];
+function updateScene(){ for(const bd of bands){ if(bd.alpha>0.001) bd.update(0,1); } }
+
+function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[followIdx].pos.slice();
   if(introActive){ updateIntroCam(t); }
   else { if(!reduce&&performance.now()-lastInteract>4200&&followIdx<0&&!aiming) az+=0.0006;
-    azS+=(az-azS)*0.12;elS+=(el-elS)*0.12;distS+=(dist-distS)*0.12; targetS[0]+=(target[0]-targetS[0])*0.12;targetS[1]+=(target[1]-targetS[1])*0.12;targetS[2]+=(target[2]-targetS[2])*0.12; }
-  camBasis(); const proj=m4perspective(FOV,aspect,0.2,4000),view=m4lookAt(eye,targetS,upc); VP=m4mul(proj,view); lensActive=isBH()&&geoP.ok;
-  const n=B.length; for(let i=0;i<n;i++){ const b=B[i]; b.rot+=b.spin; instCenter[i*3]=b.pos[0];instCenter[i*3+1]=b.pos[1];instCenter[i*3+2]=b.pos[2]; instRot[i]=b.rot; }
-  gl.bindBuffer(gl.ARRAY_BUFFER,iCenterB);gl.bufferSubData(gl.ARRAY_BUFFER,0,instCenter.subarray(0,n*3)); gl.bindBuffer(gl.ARRAY_BUFFER,iRotB);gl.bufferSubData(gl.ARRAY_BUFFER,0,instRot.subarray(0,n)); if(dirty) uploadStatic();
-  const tF=Math.tan(FOV/2),cd=(x,y)=>[fwd[0]+x*tF*aspect*rgt[0]+y*tF*upc[0],fwd[1]+x*tF*aspect*rgt[1]+y*tF*upc[1],fwd[2]+x*tF*aspect*rgt[2]+y*tF*upc[2]],corners=[cd(-1,-1),cd(1,-1),cd(-1,1),cd(1,1)];
+    azS+=(az-azS)*0.12;elS+=(el-elS)*0.12;logScaleS+=(logScale-logScaleS)*0.12; distS=distFromLog(logScaleS,camUnit);
+    targetS[0]+=(target[0]-targetS[0])*0.12;targetS[1]+=(target[1]-targetS[1])*0.12;targetS[2]+=(target[2]-targetS[2])*0.12; }
+  camBasis();
+  // floating origin: render camera-relative (anchor = eye) so GPU coords stay near zero at any pan/zoom.
+  const farP=Math.max(4000,distS*2.0), proj=m4perspective(FOV,aspect,0.2,farP), viewRel=m4lookAt([0,0,0],V.sub(targetS,eye),upc);
+  VP=m4mul(proj,viewRel); anchor=eye.slice(); lensActive=isBH()&&geoP.ok;
+  for(const bd of bands) bd.alpha=bandAlpha(bd,logScaleS);
+  const tF=tanHF,cd=(x,y)=>[fwd[0]+x*tF*aspect*rgt[0]+y*tF*upc[0],fwd[1]+x*tF*aspect*rgt[1]+y*tF*upc[1],fwd[2]+x*tF*aspect*rgt[2]+y*tF*upc[2]],corners=[cd(-1,-1),cd(1,-1),cd(-1,1),cd(1,1)];
   gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFBO.f); gl.viewport(0,0,W,H); gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-  gl.disable(gl.DEPTH_TEST);gl.depthMask(false);gl.disable(gl.BLEND); if(lensActive) drawGeo(corners); else drawSky(corners);
-  gl.enable(gl.DEPTH_TEST);gl.depthMask(true); gl.useProgram(bodyP.p); gl.uniformMatrix4fv(bodyP.u.uVP,false,VP); const lp=lightPos(); gl.uniform3fv(bodyP.u.uStarPos,lp);gl.uniform3fv(bodyP.u.uCamPos,eye);gl.uniform1f(bodyP.u.uTime,t);
-  gl.bindVertexArray(bodyVAO);gl.drawElementsInstanced(gl.TRIANGLES,SPH.count,gl.UNSIGNED_SHORT,0,n);
-  gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
-  const partMode=cosmicMode?1:(galaxyMode?2:0), ptScale=(cosmicMode?34:galaxyMode?30:26)*DPR;
-  if(gpuOK){ if(gpuCount>0){ gl.useProgram(astP.p);gl.uniformMatrix4fv(astP.u.uVP,false,VP);gl.uniform3fv(astP.u.uStarPos,lp);gl.uniform1f(astP.u.uPtScale,ptScale);gl.uniform1i(astP.u.uMode,partMode); gl.bindVertexArray(renVAO[cur]);gl.drawArrays(gl.POINTS,0,gpuCount); } }
-  else if(astCount>0){ gl.bindBuffer(gl.ARRAY_BUFFER,astPosB);gl.bufferSubData(gl.ARRAY_BUFFER,0,aX,0,astCount*3); gl.useProgram(astP.p);gl.uniformMatrix4fv(astP.u.uVP,false,VP);gl.uniform3fv(astP.u.uStarPos,lp);gl.uniform1f(astP.u.uPtScale,ptScale);gl.uniform1i(astP.u.uMode,partMode); gl.bindVertexArray(astVAO);gl.drawArrays(gl.POINTS,0,astCount); }
-  gl.useProgram(diskP.p);gl.uniformMatrix4fv(diskP.u.uVP,false,VP);gl.uniform1f(diskP.u.uTime,t); gl.bindVertexArray(ringVAO);
-  for(let i=0;i<n;i++){ const b=B[i]; if(b.ring){ const M=m4mul(m4translate(b.pos),m4mul(m4rotX(b.ring.tilt),m4scale(b.radius))); gl.uniformMatrix4fv(diskP.u.uModel,false,M);gl.uniform1f(diskP.u.uStyle,0.0);gl.uniform3fv(diskP.u.uCA,b.ring.ca);gl.uniform3fv(diskP.u.uCB,b.ring.cb); gl.drawArrays(gl.TRIANGLE_STRIP,0,RING.count); } }
-  if(isBH()&&!lensActive){ const b=B[0],M=m4mul(m4translate(b.pos),m4mul(m4rotX(0.42),m4scale(b.radius*2.6))); gl.uniformMatrix4fv(diskP.u.uModel,false,M);gl.uniform1f(diskP.u.uStyle,1.0);gl.uniform3fv(diskP.u.uCA,[1,0.4,0.1]);gl.uniform3fv(diskP.u.uCB,[0.6,0.7,1]); gl.drawArrays(gl.TRIANGLE_STRIP,0,RING.count); }
-  if(showTrails){ gl.useProgram(lineP.p);gl.uniformMatrix4fv(lineP.u.uVP,false,VP);gl.uniform1f(lineP.u.uA,0.55); gl.bindVertexArray(trailVAO);
-    for(const b of B){ if(!b.trail||b.trailPts.length<6) continue; const cnt=b.trailPts.length/3; for(let q=0;q<b.trailPts.length;q++) trailScratch[q]=b.trailPts[q]; gl.bindBuffer(gl.ARRAY_BUFFER,trailPosB);gl.bufferSubData(gl.ARRAY_BUFFER,0,trailScratch,0,b.trailPts.length); gl.uniform3fv(lineP.u.uColor,b.color); gl.drawArrays(gl.LINE_STRIP,0,cnt); } }
-  if(aiming&&aimA&&aimB&&V.len(V.sub(aimB,aimA))>0.4){ const pts=predictPath(aimA,flingVel(aimA,aimB)),cnt=pts.length/3; gl.useProgram(lineP.p);gl.uniformMatrix4fv(lineP.u.uVP,false,VP);gl.uniform1f(lineP.u.uA,0.95);gl.uniform3fv(lineP.u.uColor,[1.0,0.82,0.45]); gl.bindVertexArray(predVAO);gl.bindBuffer(gl.ARRAY_BUFFER,predPosB);gl.bufferSubData(gl.ARRAY_BUFFER,0,new Float32Array(pts)); gl.drawArrays(gl.LINE_STRIP,0,cnt); }
-  gl.disable(gl.BLEND);gl.depthMask(true); gl.disable(gl.DEPTH_TEST);
+  gl.disable(gl.DEPTH_TEST);gl.depthMask(false);gl.disable(gl.BLEND); if(lensActive) drawGeo(corners); else drawSky(corners);     // shared background (renderer-owned)
+  for(const bd of bands){ if(bd.alpha>0.001) bd.render(bd.alpha); }                                                            // bands draw geometry, back-to-front by scale
+  gl.disable(gl.BLEND);gl.depthMask(true); gl.disable(gl.DEPTH_TEST);                                                          // post chain (renderer-owned)
   gl.bindFramebuffer(gl.FRAMEBUFFER,blurA.f);gl.viewport(0,0,HW,HH); gl.useProgram(brightP.p);gl.uniform2f(brightP.u.uTexel,1/HW,1/HH); gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,sceneTex);gl.uniform1i(brightP.u.uTex,0); gl.bindVertexArray(quadVAO);gl.drawArrays(gl.TRIANGLES,0,6);
   gl.bindFramebuffer(gl.FRAMEBUFFER,blurB.f);gl.viewport(0,0,HW,HH); gl.useProgram(blurVP.p);gl.uniform2f(blurVP.u.uTexel,1/HW,1/HH);gl.bindTexture(gl.TEXTURE_2D,blurAT);gl.uniform1i(blurVP.u.uTex,0); gl.drawArrays(gl.TRIANGLES,0,6);
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,W,H); gl.useProgram(compP.p); gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,sceneTex);gl.uniform1i(compP.u.uScene,0); gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,blurBT);gl.uniform1i(compP.u.uBloom,1); gl.uniform1f(compP.u.uTime,t);gl.uniform1f(compP.u.uAspect,aspect);
-  let lens=0,bh=[0,0,0]; if(isBH()&&!lensActive){ const c=m4v4(VP,[B[0].pos[0],B[0].pos[1],B[0].pos[2],1]); if(c[3]>0){ const ux=(c[0]/c[3])*0.5+0.5,uy=(c[1]/c[3])*0.5+0.5,p2=V.add(B[0].pos,V.scale(rgt,B[0].radius)),c2=m4v4(VP,[p2[0],p2[1],p2[2],1]),u2x=(c2[0]/c2[3])*0.5+0.5,u2y=(c2[1]/c2[3])*0.5+0.5,Rs=Math.hypot((u2x-ux)*aspect,u2y-uy)*2.4; bh=[ux,uy,Rs]; lens=0.9; } }
+  let lens=0,bh=[0,0,0]; if(isBH()&&!lensActive){ const aw=anchor,c=m4v4(VP,[B[0].pos[0]-aw[0],B[0].pos[1]-aw[1],B[0].pos[2]-aw[2],1]); if(c[3]>0){ const ux=(c[0]/c[3])*0.5+0.5,uy=(c[1]/c[3])*0.5+0.5,p2=V.add(B[0].pos,V.scale(rgt,B[0].radius)),c2=m4v4(VP,[p2[0]-aw[0],p2[1]-aw[1],p2[2]-aw[2],1]),u2x=(c2[0]/c2[3])*0.5+0.5,u2y=(c2[1]/c2[3])*0.5+0.5,Rs=Math.hypot((u2x-ux)*aspect,u2y-uy)*2.4; bh=[ux,uy,Rs]; lens=0.9*SolarBand.alpha; } }
   gl.uniform3fv(compP.u.uBH,bh);gl.uniform1f(compP.u.uLens,lens); gl.bindVertexArray(quadVAO);gl.drawArrays(gl.TRIANGLES,0,6); gl.bindVertexArray(null); }
 
+function scaleAcross(L){ const m=Math.pow(10,L);
+  if(m<1e9) return (m/1e3).toPrecision(2)+' km';
+  if(m<1.6e13) return (m/AU).toPrecision(2)+' AU';
+  if(m<3e16) return (m/9.4607e15).toPrecision(2)+' ly';
+  return (m/3.0857e16).toPrecision(2)+' pc'; }
+function scaleBand(L){ return L<11.8?'inner system':L<13.3?'solar system':L<14.7?'outer system':L<16.2?'stellar neighbourhood':'interstellar'; }
 let frames=0,fpsT=performance.now(),fps=60;
-function loop(){ const t=performance.now()/1000; simulate(); updateTrails(); render(t);
+function loop(){ const t=performance.now()/1000; updateScene(); render(t);
   frames++; const now=performance.now(); if(now-fpsT>500){ fps=Math.round(frames*1000/(now-fpsT)); frames=0; fpsT=now; const pc=gpuOK?gpuCount:astCount;
-    $('readout').innerHTML='<b>'+B.length+'</b> bodies · <b>'+pc.toLocaleString()+'</b> particles<br>'+SPEEDS[spdI].toFixed(2)+'× · '+fps+' fps'+(followIdx>=0?'<br>following body '+followIdx:''); }
+    $('readout').innerHTML='<b>'+B.length+'</b> bodies · <b>'+pc.toLocaleString()+'</b> particles<br>'+SPEEDS[spdI].toFixed(2)+'× · '+fps+' fps<br><b>10<sup>'+logScaleS.toFixed(1)+'</sup> m</b> · '+scaleAcross(logScaleS)+' · '+scaleBand(logScaleS)+(followIdx>=0?'<br>following body '+followIdx:''); }
   requestAnimationFrame(loop); }
 
 const L1="Nothing here is on rails.",L2="Only gravity, doing what gravity does.";
@@ -626,7 +673,7 @@ function setSound(v){ soundOn=v; try{ if(v){ if(!aud) aud=makeAudio(); aud&&aud.
   const sh=document.getElementById('shint'); if(v&&sh){ sh.style.opacity='0'; setTimeout(()=>sh&&sh.remove&&sh.remove(),1000); } }
 function firstGesture(){ if(!_gestured){ _gestured=true; try{ if(soundOn&&aud){ aud.setOn(true); } }catch(e){} }
   if(introActive) skipIntro(); }
-function skipIntro(){ if(!introActive) return; introActive=false; az=azS; el=elS; dist=distS; target=[targetS[0],targetS[1],targetS[2]];
+function skipIntro(){ if(!introActive) return; introActive=false; az=azS; el=elS; logScale=logScaleS=clampLog(logFromDist(distS,camUnit)); target=[targetS[0],targetS[1],targetS[2]];
   document.body.classList.remove('cine'); const intro=document.getElementById('intro'); if(intro){ intro.classList.add('fade-out'); setTimeout(()=>intro.classList.add('gone'),1200); }
   const cu=document.getElementById('curtain'); if(cu&&cu.remove) cu.remove(); try{wake();}catch(e){} chapterFor(preset); }
 function startCinematicIntro(){
@@ -648,7 +695,7 @@ function startCinematicIntro(){
   setTimeout(()=>{ if(lines) lines.style.opacity='0'; },7700);
   setTimeout(()=>{ if(!introActive)return; const it=document.getElementById('ititle'); it&&it.classList.add('show'); },8100);
   setTimeout(()=>{ if(!introActive)return; const is=document.getElementById('isub'); is&&is.classList.add('show'); },8800);
-  setTimeout(()=>{ if(!introActive)return; introActive=false; az=azS; el=elS; dist=distS; target=[targetS[0],targetS[1],targetS[2]];
+  setTimeout(()=>{ if(!introActive)return; introActive=false; az=azS; el=elS; logScale=logScaleS=clampLog(logFromDist(distS,camUnit)); target=[targetS[0],targetS[1],targetS[2]];
     document.body.classList.remove('cine'); if(intro){ intro.classList.add('fade-out'); setTimeout(()=>intro.classList.add('gone'),1700);} chapterFor(preset); try{wake();}catch(e){} }, introDur*1000);
 }
 const _bs=document.getElementById('bSound'); if(_bs) _bs.onclick=()=>setSound(!soundOn);

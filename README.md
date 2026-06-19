@@ -37,11 +37,14 @@ into existing systems and watch their predicted trajectories.
 
 ## Controls
 
-- **drag** orbit · **scroll / pinch** zoom · **click** follow a body · **Esc** stop following
-- **S** change scale · **F** fling worlds (then **1/2/3** comet / world / giant)
+- **drag** orbit · **scroll / pinch** travel through scale · **click** follow a body · **Esc** stop following
+- **S** change system · **F** fling worlds (then **1/2/3** comet / world / giant)
 - **space** pause · **[ ]** slower / faster · **T** trails · **G** belt self-gravity
 - **B** star ↔ black hole · **K** relativistic gravity · **C** particle count · **R** reset
 - **copy / load** serialize the whole universe to a seed string and share it
+
+The HUD shows the current scale — `logScale` (log₁₀ of metres across the screen), a
+human-readable span ("67 AU", "stellar neighbourhood"), bodies, particles and fps.
 
 ## How it works
 
@@ -58,3 +61,26 @@ Everything is one file. The simulation core:
   full-screen geodesic integrator for the black hole's lensed background.
 
 Tunable physics constants live at the top of each preset in `buildScene()`.
+
+## Scale architecture (the bones for a continuous multi-scale zoom)
+
+The camera's defining state is a single scalar, **`logScale`** = log₁₀ of the metres
+visible across one screen-height — the scale "protagonist". Rendering is organised
+into **bands**: self-contained sim+render modules, each alive only near its scale.
+
+```js
+band = { name, logRange:[lo,hi], localUnit /* metres per local unit */, update(dt,rate), render(alpha) }
+```
+
+The renderer owns the camera, the shared background and the post chain; each frame it
+derives every band's cross-fade `alpha` from `logScale` vs its `logRange`, updates only
+in-range bands, and draws them back-to-front into one shared HDR target. Two techniques
+keep float32 honest across huge spans:
+
+- **Per-band local frames** — each band renders in its own sane-magnitude units (the
+  solar band in AU); the renderer scales its frame to the screen from `logScale`.
+- **Floating origin** — geometry is drawn camera-relative (positions minus the camera
+  anchor in the vertex shaders), so drawn coordinates stay near zero at any pan/zoom.
+
+Today one band ships — `SolarBand`, the orrery itself. Adding a scale later is one
+`Band` with a declared `logRange`; the renderer loop needs no change.

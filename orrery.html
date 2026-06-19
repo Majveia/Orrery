@@ -460,7 +460,7 @@ const COUNTS=(gpuOK?[50000,200000,1000000]:[5000,12000,20000]).filter(c=>c<=(gpu
 function fmtCount(c){ return c>=1000000?(c/1000000)+'M':(c/1000)+'k'; } function setCount(){ $('bCount').textContent=fmtCount(COUNTS[countI]); }
 $('bPlay').onclick=()=>{ paused=!paused; $('bPlay').textContent=paused?'▶':'❚❚'; };
 $('bSlow').onclick=()=>{ spdI=Math.max(0,spdI-1); setSpd(); }; $('bFast').onclick=()=>{ spdI=Math.min(SPEEDS.length-1,spdI+1); setSpd(); };
-$('bSys').onclick=()=>{ const i=(SYS.indexOf(preset)+1)%SYS.length; buildScene(SYS[i]); $('bSys').textContent=SYSL[preset]; chapterFor(preset); aud&&aud.swell&&aud.swell(0.45); };
+$('bSys').onclick=()=>{ const i=(SYS.indexOf(preset)+1)%SYS.length; buildScene(SYS[i]); $('bSys').textContent=SYSL[preset]; aud&&aud.swell&&aud.swell(0.45); };  /* chapter shown by updateScaleChapter */
 $('bCount').onclick=()=>{ countI=(countI+1)%COUNTS.length; fieldCount=COUNTS[countI]; setCount(); initParticles(); };
 $('bFling').onclick=()=>{ launchMode=!launchMode; $('bFling').textContent='fling: '+(launchMode?flingType:'off'); $('bFling').classList.toggle('on',launchMode); document.body.classList.toggle('launch',launchMode); };
 $('bTrails').onclick=()=>{ showTrails=!showTrails; $('bTrails').classList.toggle('on',showTrails); };
@@ -578,10 +578,39 @@ void main(){ vec2 q=gl_PointCoord*2.0-1.0; float rr=dot(q,q); if(rr>1.0) discard
 const GalacticBand={ name:'galactic', logRange:[18.0,21.3], localUnit:KPC, alpha:0, update(){},
   render(alpha){ const cam=outerBandVP(KPC); gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
     gl.useProgram(gxP.p);gl.uniformMatrix4fv(gxP.u.uVP,false,cam.vp);gl.uniform3fv(gxP.u.uAnchor,cam.anchor);gl.uniform3fv(gxP.u.uNuc,NUC);gl.uniform1f(gxP.u.uTime,frameT);gl.uniform1f(gxP.u.uOmega,0.12);gl.uniform1f(gxP.u.uPx,2.4*DPR);gl.uniform1f(gxP.u.uAlpha,alpha);
-    gl.bindVertexArray(gxVAO);gl.drawArrays(gl.POINTS,0,GX_N);gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true); } };
+    gl.bindVertexArray(gxVAO);gl.drawArrays(gl.POINTS,0,GX_N);gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true);
+    drawHere(cam, alpha*0.85); } };
 
-const bands=[SolarBand, NeighbourhoodBand, GalacticBand];   // adding a scale = one Band; the renderer loop is unchanged
+/* —— the Oort cloud: a faint shell of sleeping comets bridging worlds and stars —— */
+const OORT_N=coarse?3000:7000, oortPos=new Float32Array(OORT_N*3);
+for(let i=0;i<OORT_N;i++){ const r=2200+50000*Math.pow(Math.random(),0.8),ct=Math.random()*2-1,st=Math.sqrt(1-ct*ct),ph=Math.random()*TAU;
+  oortPos[i*3]=r*st*Math.cos(ph); oortPos[i*3+1]=r*ct; oortPos[i*3+2]=r*st*Math.sin(ph); }
+const oortB=vbo(oortPos),oortVAO=gl.createVertexArray(); gl.bindVertexArray(oortVAO); gl.bindBuffer(gl.ARRAY_BUFFER,oortB);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0); gl.bindVertexArray(null);
+const oortP=prog(HEAD+`layout(location=0) in vec3 aPos; uniform mat4 uVP; uniform vec3 uAnchor; uniform float uPx; uniform float uTime; out float vT; void main(){ vec4 cp=uVP*vec4(aPos-uAnchor,1.0); gl_Position=cp; vT=0.6+0.4*sin(uTime*0.6+float(gl_VertexID)); gl_PointSize=clamp(uPx/max(cp.w,1e-5),1.0,3.0); }`,
+HEAD+`in float vT; out vec4 o; uniform float uAlpha; void main(){ vec2 q=gl_PointCoord*2.0-1.0; float r=dot(q,q); if(r>1.0) discard; float g=max(1.0-r,0.0); o=vec4(vec3(0.58,0.74,0.98)*vT, g*uAlpha); }`);
+const OortBand={ name:'oort', logRange:[14.3,16.6], localUnit:AU, alpha:0, update(){},
+  render(alpha){ const cam=outerBandVP(AU); gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+    gl.useProgram(oortP.p);gl.uniformMatrix4fv(oortP.u.uVP,false,cam.vp);gl.uniform3fv(oortP.u.uAnchor,cam.anchor);gl.uniform1f(oortP.u.uPx,4600.0);gl.uniform1f(oortP.u.uTime,frameT);gl.uniform1f(oortP.u.uAlpha,alpha);
+    gl.bindVertexArray(oortVAO);gl.drawArrays(gl.POINTS,0,OORT_N);gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true); } };
+
+/* —— "you are here": a constant-size reticle on the Sun (the shared origin) —— */
+const oneVAO=gl.createVertexArray(); { const b=vbo(new Float32Array([0,0,0])); gl.bindVertexArray(oneVAO); gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0); gl.bindVertexArray(null); }
+const markerP=prog(HEAD+`layout(location=0) in vec3 aPos; uniform mat4 uVP; uniform vec3 uAnchor; uniform float uPx; void main(){ gl_Position=uVP*vec4(aPos-uAnchor,1.0); gl_PointSize=uPx; }`,
+HEAD+`out vec4 o; uniform float uTime; uniform float uAlpha; void main(){ vec2 q=gl_PointCoord*2.0-1.0; float r=length(q); float ring=smoothstep(0.10,0.0,abs(r-0.66)); float dot=smoothstep(0.20,0.0,r); float pulse=0.6+0.4*sin(uTime*2.2); float a=(ring*pulse+dot)*uAlpha*1.4; if(a<0.012) discard; o=vec4(vec3(0.6,0.96,1.0)*a, a); }`);
+function drawHere(cam,alpha){ gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+  gl.useProgram(markerP.p);gl.uniformMatrix4fv(markerP.u.uVP,false,cam.vp);gl.uniform3fv(markerP.u.uAnchor,cam.anchor);gl.uniform1f(markerP.u.uPx,34.0*DPR);gl.uniform1f(markerP.u.uTime,frameT);gl.uniform1f(markerP.u.uAlpha,alpha);
+  gl.bindVertexArray(oneVAO);gl.drawArrays(gl.POINTS,0,1);gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true); }
+
+const bands=[SolarBand, OortBand, NeighbourhoodBand, GalacticBand];   // adding a scale = one Band; the renderer loop is unchanged
 function updateScene(){ for(const bd of bands){ if(bd.alpha>0.001) bd.update(0,1); } }
+/* chapter card follows the dominant scale (band), not just the preset */
+const BCHAP={ oort:['The Oort Cloud',"a shell of sleeping comets at the edge of the Sun's reach"],
+  neighbourhood:['The Stellar Neighbourhood','the Sun, one star adrift among thousands'],
+  galactic:['The Galaxy','you are here — 8 kpc from the core, out in a spiral arm'] };
+let lastChapKey='';
+function updateScaleChapter(){ if(introActive) return; let dom=bands[0]; for(const b of bands) if(b.alpha>dom.alpha) dom=b;
+  const key=dom===SolarBand?('p:'+preset):('b:'+dom.name); if(key===lastChapKey) return; const first=lastChapKey===''; lastChapKey=key; if(first) return;
+  if(dom===SolarBand){ if(typeof CHAP!=='undefined'&&CHAP[preset]) showChapter(CHAP[preset][0],CHAP[preset][1]); } else { const d=BCHAP[dom.name]; if(d) showChapter(d[0],d[1]); } }
 
 function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[followIdx].pos.slice();
   if(introActive){ updateIntroCam(t); }
@@ -593,6 +622,7 @@ function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[foll
   const farP=Math.max(4000,distS*2.0), proj=m4perspective(FOV,aspect,0.2,farP), viewRel=m4lookAt([0,0,0],V.sub(targetS,eye),upc);
   VP=m4mul(proj,viewRel); anchor=eye.slice(); lensActive=isBH()&&geoP.ok;
   for(const bd of bands) bd.alpha=bandAlpha(bd,logScaleS);
+  updateScaleChapter();
   skyDim=1.0-0.82*Math.max(NeighbourhoodBand.alpha,GalacticBand.alpha);   // deepen the void as we leave the solar scale
   const tF=tanHF,cd=(x,y)=>[fwd[0]+x*tF*aspect*rgt[0]+y*tF*upc[0],fwd[1]+x*tF*aspect*rgt[1]+y*tF*upc[1],fwd[2]+x*tF*aspect*rgt[2]+y*tF*upc[2]],corners=[cd(-1,-1),cd(1,-1),cd(-1,1),cd(1,1)];
   gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFBO.f); gl.viewport(0,0,W,H); gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);

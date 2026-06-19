@@ -86,13 +86,16 @@ Three bands ship today, and a single continuous zoom (scroll / pinch) travels be
 them with no hard cut:
 
 - **`SolarBand`** — the orrery itself (AU frame).
-- **`NeighbourhoodBand`** — the local stellar neighbourhood (light-year frame); past
-  the Oort cloud the Sun collapses to a single point of light, then becomes one star
-  in a field of ~3,000 neighbours coloured by spectral type.
+- **`OortBand`** — a faint shell of ~7,000 sleeping comets (AU frame) you pass through
+  as the planets shrink away and the Sun becomes a lone point of light.
+- **`NeighbourhoodBand`** — the local stellar neighbourhood (light-year frame); the Sun
+  becomes one star in a field of ~3,000 neighbours coloured by spectral type.
 - **`GalacticBand`** — a differentially-rotating spiral galaxy on a flat rotation
   curve (kiloparsec frame), density-wave arms and a luminous bulge, with the Sun ~8 kpc
-  out in a spiral arm.
+  out in a spiral arm — marked by a "you are here" reticle.
 
-All three share the Sun as the common world origin, so the transition is pure scale
-cross-fade. Adding the next scale is one more `Band` with a declared `logRange`; the
+All bands share the Sun as the common world origin, so the transition is pure scale
+cross-fade. The chapter card follows the dominant scale ("The Oort Cloud", "The Stellar
+Neighbourhood", "The Galaxy"), and the backdrop nebula dims as you leave the solar
+system. Adding the next scale is one more `Band` with a declared `logRange`; the
 renderer loop needs no change.

@@ -91,9 +91,10 @@ them with no hard cut:
 - **`NeighbourhoodBand`** — the local stellar neighbourhood (light-year frame); the Sun
   becomes one star in a field of ~3,000 neighbours coloured by spectral type.
 - **`GalacticBand`** — a differentially-rotating spiral galaxy on a flat rotation
-  curve (kiloparsec frame), density-wave arms with dust lanes along their inner edges
-  and a luminous bulge, with the Sun ~8 kpc out in the Orion Arm — marked by a "you are
-  here" reticle. Press **M** for a face-on top-down "map" framing.
+  curve (kiloparsec frame): density-wave arms that gently *breathe*, dust lanes along
+  their inner edges, faint Hα (pink) glow in star-forming arm regions, and a luminous
+  bulge — the Sun ~8 kpc out in the Orion Arm, marked by a "you are here" reticle.
+  Press **M** for a face-on top-down "map" framing that slowly auto-orbits.
 
 All bands share the Sun as the common world origin, so the transition is pure scale
 cross-fade. The chapter card follows the dominant scale ("The Oort Cloud", "The Stellar

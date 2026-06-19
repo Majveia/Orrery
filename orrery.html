@@ -571,17 +571,23 @@ for(let i=0;i<GX_N;i++){ let r,z,th0,w;
   gxArr[i*4]=r; gxArr[i*4+1]=th0; gxArr[i*4+2]=z; gxArr[i*4+3]=w; }
 const gxBuf=vbo(gxArr),gxVAO=gl.createVertexArray(); gl.bindVertexArray(gxVAO); gl.bindBuffer(gl.ARRAY_BUFFER,gxBuf);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,4,gl.FLOAT,false,0,0); gl.bindVertexArray(null);
 const gxP=prog(HEAD+`layout(location=0) in vec4 aRTZA; uniform mat4 uVP; uniform vec3 uAnchor; uniform vec3 uNuc; uniform float uTime; uniform float uPx; uniform float uOmega;
-out float vArm; out float vDust; out float vR; out float vSeed; float h1(float n){ return fract(sin(n)*43758.5453); }
+out float vArm; out float vDust; out float vR; out float vSeed; out float vHII; float h1(float n){ return fract(sin(n)*43758.5453); }
 void main(){ float r=aRTZA.x, th=aRTZA.y + uOmega*uTime/(r+0.7); vec3 p=uNuc+vec3(cos(th)*r, aRTZA.z, sin(th)*r);
   float d=aRTZA.w; bool disk=d<8.0;
-  vArm = disk ? smoothstep(0.55,0.0,abs(d)) : 0.0;
+  float arm = disk ? smoothstep(0.55,0.0,abs(d)) : 0.0;
+  float breath = 0.82+0.18*sin(uTime*0.5 - r*0.26);                 // density wave "breathing" travelling along the arms
+  vArm = arm*breath;
   vDust = disk ? smoothstep(0.13,0.0,abs(d+0.20)) : 0.0;            // dark lane hugging the inner edge of each arm
-  vR=r; vSeed=h1(float(gl_VertexID)*0.123); vec4 cp=uVP*vec4(p-uAnchor,1.0); gl_Position=cp; gl_PointSize=clamp(uPx/max(cp.w,1e-5),1.0,4.0); }`,
-HEAD+`in float vArm; in float vDust; in float vR; in float vSeed; out vec4 o; uniform float uAlpha;
+  vR=r; vSeed=h1(float(gl_VertexID)*0.123);
+  vHII = arm*step(0.88, fract(vSeed*7.0));                          // ~12% of arm stars seed H-alpha / HII regions
+  vec4 cp=uVP*vec4(p-uAnchor,1.0); gl_Position=cp;
+  float mx = vHII>0.3 ? 16.0 : 4.0; gl_PointSize=clamp(uPx*(1.0+4.0*vHII)/max(cp.w,1e-5),1.0,mx); }`,
+HEAD+`in float vArm; in float vDust; in float vR; in float vSeed; in float vHII; out vec4 o; uniform float uAlpha;
 void main(){ vec2 q=gl_PointCoord*2.0-1.0; float rr=dot(q,q); if(rr>1.0) discard; float g=max(1.0-rr,0.0);
   float bulge=smoothstep(3.0,0.3,vR); float dustf=1.0-0.82*vDust; vec3 young=mix(vec3(0.5,0.62,1.0),vec3(1.0,0.5,0.72),0.5*vSeed); vec3 disk=vec3(0.55,0.62,0.82); vec3 old=vec3(1.0,0.82,0.52);
   vec3 c=mix(mix(disk,young,vArm), old, bulge); float br=(0.22+0.95*vArm)*dustf+1.7*bulge;
-  o=vec4(c*g*br*uAlpha, g*uAlpha*((0.45+0.6*vArm)*dustf+bulge)); }`);
+  float hii=clamp(vHII,0.0,1.0); vec3 ha=vec3(1.0,0.30,0.50); c=mix(c, ha, hii*0.9); br+=hii*1.8*pow(g,1.2);   // H-alpha glow in star-forming regions
+  o=vec4(c*g*br*uAlpha, g*uAlpha*((0.45+0.6*vArm)*dustf+bulge+hii*0.6)); }`);
 const GalacticBand={ name:'galactic', logRange:[18.0,21.3], localUnit:KPC, alpha:0, update(){},
   render(alpha){ const cam=outerBandVP(KPC); gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
     gl.useProgram(gxP.p);gl.uniformMatrix4fv(gxP.u.uVP,false,cam.vp);gl.uniform3fv(gxP.u.uAnchor,cam.anchor);gl.uniform3fv(gxP.u.uNuc,NUC);gl.uniform1f(gxP.u.uTime,frameT);gl.uniform1f(gxP.u.uOmega,0.12);gl.uniform1f(gxP.u.uPx,2.4*DPR);gl.uniform1f(gxP.u.uAlpha,alpha);
@@ -621,7 +627,8 @@ function updateScaleChapter(){ if(introActive) return; let dom=bands[0]; for(con
 
 function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[followIdx].pos.slice();
   if(introActive){ updateIntroCam(t); }
-  else { if(!reduce&&performance.now()-lastInteract>4200&&followIdx<0&&!aiming) az+=0.0006;
+  else { if(!reduce){ if(mapView&&!down) az+=0.0012;   // gentle auto-orbit of the map (paused while dragging)
+      else if(performance.now()-lastInteract>4200&&followIdx<0&&!aiming) az+=0.0006; }
     if(mapView) el=1.52;   // top-down "map" framing (face-on to the disk plane)
     azS+=(az-azS)*0.12;elS+=(el-elS)*0.12;logScaleS+=(logScale-logScaleS)*0.12; distS=distFromLog(logScaleS,camUnit);
     targetS[0]+=(target[0]-targetS[0])*0.12;targetS[1]+=(target[1]-targetS[1])*0.12;targetS[2]+=(target[2]-targetS[2])*0.12; }

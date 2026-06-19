@@ -85,11 +85,16 @@ keep float32 honest across huge spans:
 Three bands ship today, and a single continuous zoom (scroll / pinch) travels between
 them with no hard cut:
 
-- **`SolarBand`** — the orrery itself (AU frame).
+- **`SolarBand`** — the orrery itself (AU frame): Mercury→Neptune, ringed Saturn and a
+  tipped Uranus, the distinct Galilean moons (Io · Europa · Ganymede · Callisto) and
+  Saturn's Rhea + hazy Titan, a Great Red Spot on the gas giants, plus belts and a
+  comet. Click a world to follow it and zoom right up to it (even a single moon).
 - **`OortBand`** — a faint shell of ~7,000 sleeping comets (AU frame) you pass through
   as the planets shrink away and the Sun becomes a lone point of light.
 - **`NeighbourhoodBand`** — the local stellar neighbourhood (light-year frame); the Sun
-  becomes one star in a field of ~3,000 neighbours coloured by spectral type.
+  becomes one star in a field of ~3,000 neighbours coloured by spectral type, drifting
+  with slow proper motion, with a handful of real nearby stars named (Sirius, Alpha
+  Centauri, Vega, …) on projected labels.
 - **`GalacticBand`** — a differentially-rotating spiral galaxy on a flat rotation
   curve (kiloparsec frame): density-wave arms that gently *breathe*, dust lanes along
   their inner edges, faint Hα (pink) glow in star-forming arm regions, and a luminous

@@ -841,7 +841,14 @@ const BCHAP={ recurrence:['Recurrence','the same forms return — a flock, a clu
   neighbourhood:['The Stellar Neighbourhood','the Sun, one star adrift among thousands'],
   galactic:['The Galaxy','you are here — 8 kpc from the core, in the Orion Arm'] };
 let lastChapKey='';
-function updateScaleChapter(){ if(introActive) return; let dom=bands[0]; for(const b of bands) if(b.alpha>dom.alpha) dom=b;
+// pick the chapter's subject by how *centered* logScale sits inside each band's range,
+// not by raw alpha — alpha saturates to 1 across a whole range, so overlapping bands
+// (e.g. oort within the neighbourhood) would otherwise tie and the wrong one would win.
+function updateScaleChapter(){ if(introActive) return; let dom=null,best=1e9;
+  for(const b of bands){ if(b.alpha<0.12) continue; const lo=b.logRange[0],hi=b.logRange[1],c=(lo+hi)/2,hw=Math.max(1e-6,(hi-lo)/2);
+    let d=Math.abs((logScaleS-c)/hw); if(logScaleS<lo||logScaleS>hi) d=1+Math.min(Math.abs(logScaleS-lo),Math.abs(logScaleS-hi));   // in-range bands always rank ahead of fading ones
+    if(d<best){ best=d; dom=b; } }
+  if(!dom) dom=bands[0];
   const key=dom===SolarBand?('p:'+preset):('b:'+dom.name); if(key===lastChapKey) return; const first=lastChapKey===''; lastChapKey=key; if(first) return;
   if(dom===SolarBand){ if(typeof CHAP!=='undefined'&&CHAP[preset]) showChapter(CHAP[preset][0],CHAP[preset][1]); } else { const d=BCHAP[dom.name]; if(d) showChapter(d[0],d[1]); } }
 

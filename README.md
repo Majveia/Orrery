@@ -24,8 +24,24 @@ Zoom **in** past the planets and the ladder turns inward:
   with city lights on the night side, and the thin blue line of an atmosphere; it
   fills the view as you descend toward the surface.
 - **The Biosphere** — life itself, rendered as a continuous cellular automaton
-  (Lenia) on a GPU float field: glowing organisms that grow, move, divide and
-  self-organize. Zoom to explore the pond.
+  (Lenia) on a GPU float field: *Orbium* gliders — true self-propelled organisms
+  that swim, turn and reproduce. The living world's ocean dissolves directly into
+  this pond as you descend. Zoom to explore.
+
+### The Cosmic Calendar
+
+A scrubbable bar across the bottom compresses all 13.8 billion years into a single
+year (Sagan's *Cosmic Calendar*). Drag the playhead — the date and the era's headline
+event update live ("Nov 7 · photosynthesis", "Dec 31 · 11:59 pm · now"). Rewind past
+the origin of life and the biosphere empties; scrub forward and it fills back in. Left
+alone it simply runs toward *now*.
+
+### Recurrence
+
+Cross the threshold between the **stellar neighbourhood** and the **galaxy** and a single
+cloud of particles performs a *match-cut*: a starling **flock** (murmuration) gathers into
+a **globular cluster**, which unwinds into a two-armed **spiral galaxy** — the same forms
+returning at ever-larger scale, the simulation's recurring visual rhyme.
 
 Scenes (press **S**):
 
@@ -63,6 +79,7 @@ Scenes (press **S**):
 - **S** change system · **M** top-down "map" view · **F** fling worlds (then **1/2/3** comet / world / giant)
 - **space** pause · **[ ]** slower / faster · **T** trails · **G** belt self-gravity
 - **B** star ↔ black hole · **K** relativistic gravity · **C** particle count · **R** reset
+- **drag the calendar bar** scrub through cosmic time (13.8 Gyr compressed to one year)
 - **copy / load** serialize the whole universe to a seed string and share it
 
 The HUD shows the current scale — `logScale` (log₁₀ of metres across the screen), a

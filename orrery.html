@@ -14,7 +14,14 @@
   .grain{position:fixed;inset:0;pointer-events:none;z-index:6;opacity:.04;mix-blend-mode:screen;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E")}
   .title,.readout,.bar,.help{transition:opacity .6s ease}
-  body.idle .title, body.idle .readout, body.idle .bar, body.idle .help{opacity:0;pointer-events:none}
+  body.idle .title, body.idle .readout, body.idle .bar, body.idle .help, body.idle .cal{opacity:0;pointer-events:none}
+  .cal{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);z-index:8;width:min(640px,88vw);transition:opacity .6s ease}
+  .calbar{position:relative;height:3px;background:rgba(239,233,223,.12);border-radius:2px;cursor:pointer}
+  .calfill{position:absolute;left:0;top:0;height:100%;background:linear-gradient(90deg,rgba(255,207,140,.55),rgba(150,200,255,.75));border-radius:2px}
+  .calhead{position:absolute;top:50%;left:100%;width:9px;height:9px;border-radius:50%;background:#ffcf8c;transform:translate(-50%,-50%);box-shadow:0 0 8px rgba(255,207,140,.85)}
+  .caltick{position:absolute;top:-2px;width:1px;height:7px;background:rgba(239,233,223,.28);pointer-events:none}
+  .caltxt{margin-top:9px;text-align:center;font-size:9px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
+  .caltxt b{color:var(--gold);font-weight:600}
   .title{position:fixed;left:18px;top:15px;z-index:7;font-size:11px;letter-spacing:.42em;text-transform:uppercase;color:var(--dim)}
   .title b{font-weight:600;color:rgba(239,233,223,.55)}
   .title span{display:block;margin-top:5px;font-size:9.5px;letter-spacing:.24em;text-transform:none;color:var(--dim2)}
@@ -75,6 +82,7 @@
   <div class="readout" id="readout"></div>
   <div id="labels"></div>
   <div class="help" id="help">drag to orbit · scroll to travel scales · click to follow · S changes system · F flings worlds</div>
+  <div class="cal" id="cal"><div class="calbar" id="calbar"><div class="calfill" id="calfill"></div><div class="calhead" id="calhead"></div></div><div class="caltxt" id="caltxt"></div></div>
   <div class="bar" id="bar">
     <button id="bPlay" title="pause / play (space)">❚❚</button>
     <button id="bSlow" title="slower ([)">«</button><span class="spd" id="spd">1.0×</span><button id="bFast" title="faster (])">»</button>
@@ -491,6 +499,21 @@ function deserialize(str){ const o=JSON.parse(atob(str)); preset=o.p||'custom'; 
 $('bCopy').onclick=()=>{ const s=serialize(); if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(s).catch(()=>prompt('Copy this seed:',s)); } else prompt('Copy this seed:',s); };
 $('bLoad').onclick=()=>{ const s=prompt('Paste a seed:'); if(s){ try{ deserialize(s.trim()); }catch(e){ console.error('seed',e); } } };
 let mapView=false; $('bMap').onclick=()=>{ mapView=!mapView; $('bMap').classList.toggle('on',mapView); wake(); };
+/* ── Cosmic Calendar: 13.8 Gyr compressed into one year (Sagan) ── */
+let cosmicTau=1.0, calDrag=false;
+const COSMIC_EVENTS=[[0,'big bang'],[0.035,'first stars'],[0.205,'the Milky Way forms'],[0.49,'old stars nearby'],[0.671,'the Solar System'],[0.682,'Earth'],[0.723,'first life'],[0.75,'photosynthesis'],[0.86,'complex cells'],[0.962,'Cambrian explosion'],[0.984,'dinosaurs'],[0.997,'first mammals'],[0.99986,'first humans'],[1,'now']];
+const CAL_M=['January','February','March','April','May','June','July','August','September','October','November','December'], CAL_L=[31,28,31,30,31,30,31,31,30,31,30,31];
+function cosmicDate(t){ if(t>=0.99986) return 'Dec 31 · 11:59 pm'; let day=Math.min(364,Math.floor(t*365)); for(let m=0;m<12;m++){ if(day<CAL_L[m]) return CAL_M[m]+' '+(day+1); day-=CAL_L[m]; } return 'December 31'; }
+function cosmicEvent(t){ let e='big bang'; for(const ev of COSMIC_EVENTS){ if(ev[0]<=t+1e-9) e=ev[1]; } return e; }
+(function(){ const bar=$('calbar'); if(!bar) return; for(const ev of COSMIC_EVENTS){ const d=document.createElement('div'); d.className='caltick'; d.style.left=(ev[0]*100)+'%'; bar.appendChild(d); }
+  const at=e=>{ const r=bar.getBoundingClientRect(); cosmicTau=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)); wake(); };
+  bar.addEventListener('pointerdown',e=>{ calDrag=true; bar.setPointerCapture(e.pointerId); at(e); });
+  bar.addEventListener('pointermove',e=>{ if(calDrag) at(e); });
+  const up=()=>{ calDrag=false; }; bar.addEventListener('pointerup',up); bar.addEventListener('pointercancel',up); })();
+function updateCalendar(){ if(!paused&&!calDrag&&cosmicTau<1) cosmicTau=Math.min(1,cosmicTau+SPEEDS[spdI]*2.4e-4);
+  lifeFactor=smooth01((cosmicTau-0.70)/0.06);
+  const f=$('calfill'),h=$('calhead'),tx=$('caltxt'); if(f)f.style.width=(cosmicTau*100)+'%'; if(h)h.style.left=(cosmicTau*100)+'%';
+  if(tx)tx.innerHTML='<b>'+cosmicDate(cosmicTau)+'</b> · '+cosmicEvent(cosmicTau); }
 setSpd(); setCount();
 addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); wake();
   if(k===' '){ e.preventDefault(); $('bPlay').click(); } else if(k==='['){ $('bSlow').click(); } else if(k===']'){ $('bFast').click(); }
@@ -783,10 +806,36 @@ const LifeBand={ name:'life', logRange:[-3.0,7.5], localUnit:1e-4, alpha:0,
     gl.useProgram(lifeDrawP.p);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,lifeTex[lifeCur]);gl.uniform1i(lifeDrawP.u.uF,0);gl.uniform1f(lifeDrawP.u.uAlpha,alpha);gl.uniform1f(lifeDrawP.u.uZoom,zoom);gl.uniform1f(lifeDrawP.u.uAspect,aspect);gl.uniform2f(lifeDrawP.u.uPan,lifePan[0],lifePan[1]);gl.uniform1f(lifeDrawP.u.uLife,lifeFactor);
     gl.bindVertexArray(quadVAO);gl.drawArrays(gl.TRIANGLES,0,6); gl.disable(gl.BLEND); } };
 
-const bands=[SolarBand, OortBand, NeighbourhoodBand, GalacticBand, WorldBand, LifeBand];   // adding a scale = one Band; the renderer loop is unchanged
+/* —— recurrence match-cut: one cloud of particles, the same forms returning —— */
+const REC_N=coarse?3000:6000, recArr=new Float32Array(REC_N*9);
+for(let i=0;i<REC_N;i++){ const u=Math.random(),ang=u*Math.PI*3.0,fr=1.4;
+  const fx=Math.cos(ang)*fr*(0.6+0.4*Math.random()), fy=(Math.random()-0.5)*0.5+Math.sin(u*Math.PI*2.0)*0.35, fz=Math.sin(ang)*fr*0.5+(u-0.5)*2.4;     // flock (murmuration)
+  const cr=Math.abs(randn())*0.55,ct=Math.random()*2-1,st=Math.sqrt(1-ct*ct),ph=Math.random()*TAU, cx=cr*st*Math.cos(ph),cy=cr*ct,cz=cr*st*Math.sin(ph);   // globular cluster
+  const sr=Math.pow(Math.random(),0.6)*1.65,arm=Math.random()<0.5?0:Math.PI,sth=Math.log(sr+0.1)/Math.tan(0.42)+arm+randn()*0.26, sx=Math.cos(sth)*sr,sy=(Math.random()-0.5)*0.08,sz=Math.sin(sth)*sr;   // spiral galaxy
+  const j=i*9; recArr[j]=fx;recArr[j+1]=fy;recArr[j+2]=fz; recArr[j+3]=cx;recArr[j+4]=cy;recArr[j+5]=cz; recArr[j+6]=sx;recArr[j+7]=sy;recArr[j+8]=sz; }
+const recBuf=vbo(recArr),recVAO=gl.createVertexArray(); gl.bindVertexArray(recVAO); gl.bindBuffer(gl.ARRAY_BUFFER,recBuf);
+gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,36,0); gl.enableVertexAttribArray(1);gl.vertexAttribPointer(1,3,gl.FLOAT,false,36,12); gl.enableVertexAttribArray(2);gl.vertexAttribPointer(2,3,gl.FLOAT,false,36,24); gl.bindVertexArray(null);
+const recP=prog(HEAD+`layout(location=0) in vec3 aT0; layout(location=1) in vec3 aT1; layout(location=2) in vec3 aT2; uniform mat4 uVP; uniform vec3 uAnchor; uniform float uPhase,uTime,uPx;
+out float vSeed; out float vPh; float h1(float n){ return fract(sin(n)*43758.5453); }
+void main(){ float p=uPhase; vec3 pos = p<1.0 ? mix(aT0,aT1,smoothstep(0.0,1.0,p)) : mix(aT1,aT2,smoothstep(0.0,1.0,p-1.0));
+  float seed=h1(float(gl_VertexID)*0.137); float a=uTime*0.06; float cs=cos(a),sn=sin(a); pos.xz=mat2(cs,-sn,sn,cs)*pos.xz; pos.y+=sin(uTime*0.7+seed*30.0)*0.02;
+  vSeed=seed; vPh=p; vec4 cp=uVP*vec4(pos-uAnchor,1.0); gl_Position=cp; gl_PointSize=clamp(uPx/max(cp.w,0.01),1.0,5.0); }`,
+HEAD+`in float vSeed; in float vPh; out vec4 o; uniform float uAlpha;
+void main(){ vec2 q=gl_PointCoord*2.0-1.0; float r=dot(q,q); if(r>1.0) discard; float g=max(1.0-r,0.0);
+  vec3 flock=vec3(0.6,0.72,0.95), clust=vec3(1.0,0.88,0.62), spiral=mix(vec3(0.55,0.66,1.0),vec3(1.0,0.5,0.72),vSeed);
+  vec3 c = vPh<1.0 ? mix(flock,clust,vPh) : mix(clust,spiral,vPh-1.0); o=vec4(c*g*(1.0+0.8*vSeed)*uAlpha*1.5, g*uAlpha); }`);
+const RecurrenceBand={ name:'recurrence', logRange:[17.3,18.7], localUnit:LY, alpha:0, update(){},
+  render(alpha){ const p=Math.min(2,Math.max(0,(logScaleS-17.3)/0.7)),dS=2.7,c=Math.cos(elS),s=Math.sin(elS),e=[dS*c*Math.sin(azS),dS*s,dS*c*Math.cos(azS)];
+    const proj=m4perspective(FOV,aspect,0.03,40),vrel=m4lookAt([0,0,0],V.scale(e,-1),upc),vp=m4mul(proj,vrel);
+    gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+    gl.useProgram(recP.p);gl.uniformMatrix4fv(recP.u.uVP,false,vp);gl.uniform3fv(recP.u.uAnchor,e);gl.uniform1f(recP.u.uPhase,p);gl.uniform1f(recP.u.uTime,frameT);gl.uniform1f(recP.u.uPx,9.0*DPR);gl.uniform1f(recP.u.uAlpha,alpha*0.95);
+    gl.bindVertexArray(recVAO);gl.drawArrays(gl.POINTS,0,REC_N);gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true); } };
+
+const bands=[SolarBand, OortBand, NeighbourhoodBand, GalacticBand, RecurrenceBand, WorldBand, LifeBand];   // adding a scale = one Band; the renderer loop is unchanged
 function updateScene(){ for(const bd of bands){ if(bd.alpha>0.001) bd.update(0,1); } }
 /* chapter card follows the dominant scale (band), not just the preset */
-const BCHAP={ world:['A Living World','oceans, weather, and the thin blue line of an atmosphere'],
+const BCHAP={ recurrence:['Recurrence','the same forms return — a flock, a cluster, a galaxy'],
+  world:['A Living World','oceans, weather, and the thin blue line of an atmosphere'],
   life:['The Biosphere','continuous life — patterns that grow, move, and reproduce'],
   oort:['The Oort Cloud',"a shell of sleeping comets at the edge of the Sun's reach"],
   neighbourhood:['The Stellar Neighbourhood','the Sun, one star adrift among thousands'],
@@ -808,6 +857,7 @@ function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[foll
   const farP=Math.max(4000,distS*2.0), proj=m4perspective(FOV,aspect,0.2,farP), viewRel=m4lookAt([0,0,0],V.sub(targetS,eye),upc);
   VP=m4mul(proj,viewRel); anchor=eye.slice(); lensActive=isBH()&&geoP.ok;
   for(const bd of bands) bd.alpha=bandAlpha(bd,logScaleS);
+  if(RecurrenceBand.alpha>0.01){ const k=1-0.78*RecurrenceBand.alpha; NeighbourhoodBand.alpha*=k; GalacticBand.alpha*=k; }   // let the match-cut take the stage
   updateScaleChapter();
   skyDim=1.0-0.85*Math.max(NeighbourhoodBand.alpha,GalacticBand.alpha,WorldBand.alpha,LifeBand.alpha);   // deepen the void as we leave the solar scale
   const tF=tanHF,cd=(x,y)=>[fwd[0]+x*tF*aspect*rgt[0]+y*tF*upc[0],fwd[1]+x*tF*aspect*rgt[1]+y*tF*upc[1],fwd[2]+x*tF*aspect*rgt[2]+y*tF*upc[2]],corners=[cd(-1,-1),cd(1,-1),cd(-1,1),cd(1,1)];
@@ -834,7 +884,7 @@ function scaleAcross(L){ const m=Math.pow(10,L);
   return (m/3.0857e19).toPrecision(2)+' kpc'; }
 function scaleBand(L){ return L<0.5?'microbial':L<4?'the biosphere':L<7?'the surface':L<10?'a living world':L<11.8?'inner system':L<13.3?'solar system':L<14.7?'outer system':L<16.0?'oort cloud':L<18.4?'stellar neighbourhood':L<20.0?'spiral arm':'the galaxy'; }
 let frames=0,fpsT=performance.now(),fps=60;
-function loop(){ const t=performance.now()/1000; updateScene(); render(t);
+function loop(){ const t=performance.now()/1000; updateScene(); updateCalendar(); render(t);
   frames++; const now=performance.now(); if(now-fpsT>500){ fps=Math.round(frames*1000/(now-fpsT)); frames=0; fpsT=now; const pc=gpuOK?gpuCount:astCount;
     $('readout').innerHTML='<b>'+B.length+'</b> bodies · <b>'+pc.toLocaleString()+'</b> particles<br>'+SPEEDS[spdI].toFixed(2)+'× · '+fps+' fps<br><b>10<sup>'+logScaleS.toFixed(1)+'</sup> m</b> · '+scaleAcross(logScaleS)+' · '+scaleBand(logScaleS)+(followIdx>=0?'<br>following body '+followIdx:''); }
   requestAnimationFrame(loop); }

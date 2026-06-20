@@ -15,7 +15,7 @@ into existing systems and watch their predicted trajectories.
 ## Scales
 
 A single continuous zoom (scroll / pinch) travels the whole ladder — from a living
-cell (~10⁻⁴ m) out to the cosmic web (~10²¹ m) — with no hard cut. Pressing **S**
+cell (~10⁻⁴ m) out to the cosmic web (~10²⁵ m) — with no hard cut. Pressing **S**
 jumps between *scenes* (different things to find at the solar scale).
 
 Zoom **in** past the planets and the ladder turns inward:
@@ -139,9 +139,16 @@ them with no hard cut:
   their inner edges, faint Hα (pink) glow in star-forming arm regions, and a luminous
   bulge — the Sun ~8 kpc out in the Orion Arm, marked by a "you are here" reticle.
   Press **M** for a face-on top-down "map" framing that slowly auto-orbits.
+- **`CosmicWebBand`** — the largest structure there is (megaparsec frame): zoom out past
+  the galaxy and the whole spiral becomes one mote in a lattice of ~24,000 galaxies —
+  clusters piled in nodes, spirals strung along filaments, immense voids between, the
+  Milky Way still marked at the centre. Galaxy distances run log-uniform from the Local
+  Group out to ~400 Mpc, so the climb out of the galaxy is never empty: neighbours, then
+  groups, then the grand web. The web's branching is the recurrence motif at its largest —
+  the same form as a neuron, a river delta, the Lenia organisms far below.
 
 All bands share the Sun as the common world origin, so the transition is pure scale
-cross-fade. The chapter card follows the dominant scale ("The Oort Cloud", "The Stellar
-Neighbourhood", "The Galaxy"), and the backdrop nebula dims as you leave the solar
-system. Adding the next scale is one more `Band` with a declared `logRange`; the
-renderer loop needs no change.
+cross-fade. The chapter card names the dominant scale by how *centered* `logScale` sits
+in each band's range ("The Stellar Neighbourhood", "The Galaxy", "The Cosmic Web"), and
+the backdrop nebula dims as you leave the solar system. Adding the next scale is one more
+`Band` with a declared `logRange`; the renderer loop needs no change.

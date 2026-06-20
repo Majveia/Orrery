@@ -432,7 +432,7 @@ function uploadStatic(){ const n=B.length,rad=new Float32Array(n),col=new Float3
    The orbit camera is driven by it: each band derives its own local-frame distance from logScale. */
 const AU=1.495978707e11;                       // metres per orrery sim-unit (solar band local frame)
 const FOV=50*Math.PI/180, tanHF=Math.tan(FOV/2);
-const LOG_MIN=-3.0, LOG_MAX=21.3;              // the biosphere (sub-mm life) → the whole galaxy
+const LOG_MIN=-3.0, LOG_MAX=25.8;              // the biosphere (sub-mm life) → the cosmic web
 let camUnit=AU;                                // active band's metres-per-local-unit
 function distFromLog(L,u){ return Math.pow(10,L)/u/(2*tanHF); }              // camera distance, in local units
 function logFromDist(d,u){ return Math.log10(Math.max(d,1e-9)*2*tanHF*u); }
@@ -653,6 +653,51 @@ const GalacticBand={ name:'galactic', logRange:[18.0,21.3], localUnit:KPC, alpha
     gl.bindVertexArray(gxVAO);gl.drawArrays(gl.POINTS,0,GX_N);gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true);
     drawHere(cam, alpha*0.85); } };
 
+/* —— the cosmic web: zoom out past the galaxy and the whole spiral becomes one mote
+   in a lattice of galaxies — clusters strung on filaments around immense voids. The
+   largest structure rhymes with the smallest: the same branching as a neuron, a root,
+   a river delta, the Lenia organisms far below. (megaparsec local frame.) —— */
+const MPC=3.0857e22;
+const web=(function(){
+  const R=420, N=coarse?8000:24000;                       // box half-size (Mpc) and galaxy count
+  const nodes=[[0,0,0]];                                  // home cluster at the origin (the Milky Way's supercluster)
+  const n=7, cs=2*R/n;                                    // jittered lattice of supercluster nodes, kept within a sphere
+  for(let ix=0;ix<n;ix++)for(let iy=0;iy<n;iy++)for(let iz=0;iz<n;iz++){
+    const px=-R+cs*(ix+0.5)+randn()*cs*0.34, py=-R+cs*(iy+0.5)+randn()*cs*0.34, pz=-R+cs*(iz+0.5)+randn()*cs*0.34;
+    const rr=Math.hypot(px,py,pz); if(rr>R*1.05||rr<cs*0.5) continue; nodes.push([px,py,pz]); }
+  const edges=[], seen=new Set();                          // filaments: link each node to its 2 nearest neighbours
+  for(let i=0;i<nodes.length;i++){ const d=[]; for(let j=0;j<nodes.length;j++) if(j!==i){ const a=nodes[i],b=nodes[j]; d.push([(a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2,j]); }
+    d.sort((p,q)=>p[0]-q[0]); for(let k=0;k<2&&k<d.length;k++){ if(d[k][0]>(cs*1.7)**2) continue; const j=d[k][1],key=i<j?i+'_'+j:j+'_'+i; if(seen.has(key))continue; seen.add(key); edges.push([i,j]); } }
+  const pos=new Float32Array(N*4), rnd3=s=>[randn()*s,randn()*s,randn()*s];
+  for(let i=0;i<N;i++){ let p,type; const u=Math.random();
+    if(u<0.12){ const dr=[randn(),randn(),randn()],L=Math.hypot(dr[0],dr[1],dr[2])||1, rr=0.06*Math.pow(1000,Math.random()); p=[dr[0]/L*rr,dr[1]/L*rr,dr[2]/L*rr]; type=Math.random()<0.62?1:0; }   // local volume: log-uniform 0.06–60 Mpc so the zoom out of the galaxy is never empty
+    else if(u<0.50){ const nd=nodes[(Math.random()*nodes.length)|0],j=rnd3(3+8*Math.random()); p=[nd[0]+j[0],nd[1]+j[1],nd[2]+j[2]]; type=Math.random()<0.72?0:1; }                              // clusters: ellipticals piled in the nodes
+    else if(u<0.88&&edges.length){ const e=edges[(Math.random()*edges.length)|0],a=nodes[e[0]],b=nodes[e[1]],t=Math.random(),j=rnd3(2.4); p=[a[0]+(b[0]-a[0])*t+j[0],a[1]+(b[1]-a[1])*t+j[1],a[2]+(b[2]-a[2])*t+j[2]]; type=Math.random()<0.55?1:0; } // filaments: spirals strung between nodes
+    else { p=[(Math.random()*2-1)*R,(Math.random()*2-1)*R,(Math.random()*2-1)*R]; type=Math.random()<0.5?1:0; }                                                                              // a few lonely galaxies adrift in the voids
+    pos[i*4]=p[0];pos[i*4+1]=p[1];pos[i*4+2]=p[2];pos[i*4+3]=type; }
+  const lines=new Float32Array(edges.length*6);
+  for(let i=0;i<edges.length;i++){ const a=nodes[edges[i][0]],b=nodes[edges[i][1]]; lines.set([a[0],a[1],a[2],b[0],b[1],b[2]],i*6); }
+  return {pos,N,lines,edgeN:edges.length}; })();
+const webBuf=vbo(web.pos),webVAO=gl.createVertexArray(); gl.bindVertexArray(webVAO);gl.bindBuffer(gl.ARRAY_BUFFER,webBuf);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,4,gl.FLOAT,false,0,0);gl.bindVertexArray(null);
+const webLineBuf=vbo(web.lines),webLineVAO=gl.createVertexArray(); gl.bindVertexArray(webLineVAO);gl.bindBuffer(gl.ARRAY_BUFFER,webLineBuf);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);gl.bindVertexArray(null);
+const webP=prog(HEAD+`layout(location=0) in vec4 aPosT; uniform mat4 uVP; uniform vec3 uAnchor; uniform float uPx,uTime; out float vType; out float vSeed;
+float h1(float n){ return fract(sin(n)*43758.5453); }
+void main(){ vSeed=h1(float(gl_VertexID)*0.137); vType=aPosT.w; vec4 cp=uVP*vec4(aPosT.xyz-uAnchor,1.0); gl_Position=cp;
+  float big=step(0.984,vSeed); gl_PointSize=clamp(uPx*(1.0+vSeed*0.9+big*3.4),1.5,7.0); }`,   // galaxies stay point-like at every zoom (near-constant pixels), clusters glow by additive stacking
+HEAD+`in float vType; in float vSeed; out vec4 o; uniform float uAlpha;
+void main(){ vec2 q=gl_PointCoord*2.0-1.0; float r=dot(q,q); if(r>1.0) discard; float g=max(1.0-r,0.0);
+  vec3 ell=vec3(1.0,0.83,0.6), spi=vec3(0.64,0.77,1.0); vec3 c=mix(ell,spi,vType); float br=0.5+1.5*vSeed;
+  o=vec4(c*g*br*uAlpha*1.4, g*uAlpha*0.9); }`);
+const webLineP=prog(HEAD+`layout(location=0) in vec3 aPos; uniform mat4 uVP; uniform vec3 uAnchor; void main(){ gl_Position=uVP*vec4(aPos-uAnchor,1.0); }`,
+HEAD+`out vec4 o; uniform float uAlpha; void main(){ o=vec4(vec3(0.30,0.40,0.72)*uAlpha, uAlpha); }`);
+const CosmicWebBand={ name:'cosmicweb', logRange:[21.5,25.8], localUnit:MPC, alpha:0, update(){},
+  render(alpha){ const cam=outerBandVP(MPC); gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+    gl.useProgram(webLineP.p);gl.uniformMatrix4fv(webLineP.u.uVP,false,cam.vp);gl.uniform3fv(webLineP.u.uAnchor,cam.anchor);gl.uniform1f(webLineP.u.uAlpha,alpha*0.26);
+    gl.bindVertexArray(webLineVAO);gl.drawArrays(gl.LINES,0,web.edgeN*2);gl.bindVertexArray(null);
+    gl.useProgram(webP.p);gl.uniformMatrix4fv(webP.u.uVP,false,cam.vp);gl.uniform3fv(webP.u.uAnchor,cam.anchor);gl.uniform1f(webP.u.uPx,1.7*DPR);gl.uniform1f(webP.u.uTime,frameT);gl.uniform1f(webP.u.uAlpha,alpha);
+    gl.bindVertexArray(webVAO);gl.drawArrays(gl.POINTS,0,web.N);gl.bindVertexArray(null);
+    gl.disable(gl.BLEND);gl.depthMask(true); drawHere(cam, alpha*0.3); } };
+
 /* —— the Oort cloud: a faint shell of sleeping comets bridging worlds and stars —— */
 const OORT_N=coarse?3000:7000, oortPos=new Float32Array(OORT_N*3);
 for(let i=0;i<OORT_N;i++){ const r=2200+50000*Math.pow(Math.random(),0.8),ct=Math.random()*2-1,st=Math.sqrt(1-ct*ct),ph=Math.random()*TAU;
@@ -831,10 +876,11 @@ const RecurrenceBand={ name:'recurrence', logRange:[17.3,18.7], localUnit:LY, al
     gl.useProgram(recP.p);gl.uniformMatrix4fv(recP.u.uVP,false,vp);gl.uniform3fv(recP.u.uAnchor,e);gl.uniform1f(recP.u.uPhase,p);gl.uniform1f(recP.u.uTime,frameT);gl.uniform1f(recP.u.uPx,9.0*DPR);gl.uniform1f(recP.u.uAlpha,alpha*0.95);
     gl.bindVertexArray(recVAO);gl.drawArrays(gl.POINTS,0,REC_N);gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true); } };
 
-const bands=[SolarBand, OortBand, NeighbourhoodBand, GalacticBand, RecurrenceBand, WorldBand, LifeBand];   // adding a scale = one Band; the renderer loop is unchanged
+const bands=[SolarBand, OortBand, NeighbourhoodBand, GalacticBand, CosmicWebBand, RecurrenceBand, WorldBand, LifeBand];   // adding a scale = one Band; the renderer loop is unchanged
 function updateScene(){ for(const bd of bands){ if(bd.alpha>0.001) bd.update(0,1); } }
 /* chapter card follows the dominant scale (band), not just the preset */
-const BCHAP={ recurrence:['Recurrence','the same forms return — a flock, a cluster, a galaxy'],
+const BCHAP={ cosmicweb:['The Cosmic Web','galaxies strung on filaments around vast voids — the same branching, at the largest scale there is'],
+  recurrence:['Recurrence','the same forms return — a flock, a cluster, a galaxy'],
   world:['A Living World','oceans, weather, and the thin blue line of an atmosphere'],
   life:['The Biosphere','continuous life — patterns that grow, move, and reproduce'],
   oort:['The Oort Cloud',"a shell of sleeping comets at the edge of the Sun's reach"],
@@ -866,7 +912,7 @@ function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[foll
   for(const bd of bands) bd.alpha=bandAlpha(bd,logScaleS);
   if(RecurrenceBand.alpha>0.01){ const k=1-0.78*RecurrenceBand.alpha; NeighbourhoodBand.alpha*=k; GalacticBand.alpha*=k; }   // let the match-cut take the stage
   updateScaleChapter();
-  skyDim=1.0-0.85*Math.max(NeighbourhoodBand.alpha,GalacticBand.alpha,WorldBand.alpha,LifeBand.alpha);   // deepen the void as we leave the solar scale
+  skyDim=1.0-0.85*Math.max(NeighbourhoodBand.alpha,GalacticBand.alpha,CosmicWebBand.alpha,WorldBand.alpha,LifeBand.alpha);   // deepen the void as we leave the solar scale
   const tF=tanHF,cd=(x,y)=>[fwd[0]+x*tF*aspect*rgt[0]+y*tF*upc[0],fwd[1]+x*tF*aspect*rgt[1]+y*tF*upc[1],fwd[2]+x*tF*aspect*rgt[2]+y*tF*upc[2]],corners=[cd(-1,-1),cd(1,-1),cd(-1,1),cd(1,1)];
   gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFBO.f); gl.viewport(0,0,W,H); gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   gl.disable(gl.DEPTH_TEST);gl.depthMask(false);gl.disable(gl.BLEND); if(lensActive) drawGeo(corners); else drawSky(corners);     // shared background (renderer-owned)
@@ -889,7 +935,7 @@ function scaleAcross(L){ const m=Math.pow(10,L);
   if(m<3e16) return (m/9.4607e15).toPrecision(2)+' ly';
   if(m<3e19) return (m/3.0857e16).toPrecision(2)+' pc';
   return (m/3.0857e19).toPrecision(2)+' kpc'; }
-function scaleBand(L){ return L<0.5?'microbial':L<4?'the biosphere':L<7?'the surface':L<10?'a living world':L<11.8?'inner system':L<13.3?'solar system':L<14.7?'outer system':L<16.0?'oort cloud':L<18.4?'stellar neighbourhood':L<20.0?'spiral arm':'the galaxy'; }
+function scaleBand(L){ return L<0.5?'microbial':L<4?'the biosphere':L<7?'the surface':L<10?'a living world':L<11.8?'inner system':L<13.3?'solar system':L<14.7?'outer system':L<15.8?'oort cloud':L<18.4?'stellar neighbourhood':L<20.0?'spiral arm':L<21.8?'the galaxy':L<23.6?'galaxy groups':'the cosmic web'; }
 let frames=0,fpsT=performance.now(),fps=60;
 function loop(){ const t=performance.now()/1000; updateScene(); updateCalendar(); render(t);
   frames++; const now=performance.now(); if(now-fpsT>500){ fps=Math.round(frames*1000/(now-fpsT)); frames=0; fpsT=now; const pc=gpuOK?gpuCount:astCount;

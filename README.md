@@ -14,9 +14,10 @@ into existing systems and watch their predicted trajectories.
 
 ## Scales
 
-A single continuous zoom (scroll / pinch) travels the whole ladder — from a living
-cell (~10⁻⁴ m) out to the cosmic web (~10²⁵ m) — with no hard cut. Pressing **S**
-jumps between *scenes* (different things to find at the solar scale).
+A single continuous zoom (scroll / pinch) travels the whole ladder — ~32 orders of
+magnitude, from inside a single cell (~10⁻⁷ m) out to the cosmic web (~10²⁵ m) — with
+no hard cut. Pressing **S** jumps between *scenes* (different things to find at the
+solar scale).
 
 Zoom **in** past the planets and the ladder turns inward:
 
@@ -27,6 +28,13 @@ Zoom **in** past the planets and the ladder turns inward:
   (Lenia) on a GPU float field: *Orbium* gliders — true self-propelled organisms
   that swim, turn and reproduce. The living world's ocean dissolves directly into
   this pond as you descend. Zoom to explore.
+- **The Cell** — descend past the biosphere and one organism resolves into a single
+  living cell: an undulating phospholipid membrane, a nucleus with chromatin and a
+  nucleolus, warm mitochondria with cristae, vesicles in Brownian drift, and a
+  **cytoskeleton** of filaments drawn the very same way as the cosmic web's threads.
+  The largest structure and the smallest answer each other — web ↔ membrane, filament
+  ↔ cytoskeleton, void ↔ cytosol — so the single zoom is bookended, cell to cosmic web,
+  by one recurring branching form.
 
 ### The Cosmic Calendar
 
@@ -146,6 +154,11 @@ them with no hard cut:
   Group out to ~400 Mpc, so the climb out of the galaxy is never empty: neighbours, then
   groups, then the grand web. The web's branching is the recurrence motif at its largest —
   the same form as a neuron, a river delta, the Lenia organisms far below.
+- **`CellBand`** — the smallest scale there is (the inward counterpart of the web): a
+  fullscreen procedural cell — membrane, nucleus, mitochondria, vesicles in Brownian
+  drift, and a cytoskeleton filament-web rendered the same way as the cosmic web's
+  threads. Keyed only off `logScale` (like the world and biosphere bands), so it needs
+  no camera frame and carries zero float32 risk at the molecular scale.
 
 All bands share the Sun as the common world origin, so the transition is pure scale
 cross-fade. The chapter card names the dominant scale by how *centered* `logScale` sits

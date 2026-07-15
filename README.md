@@ -24,17 +24,28 @@ Zoom **in** past the planets and the ladder turns inward:
 - **A Living World** — a procedural planet: oceans, continents, weather, a terminator
   with city lights on the night side, and the thin blue line of an atmosphere; it
   fills the view as you descend toward the surface.
+- **A Living City** — those night-side lights resolve into a *billion-piece* island
+  metropolis, alive at every scale: a single continuous zoom carries you from the
+  whole island held in one impossible aerial down to street level with no seam. A
+  tapering, tilted island (a Battery-to-Inwood Manhattan in spirit); the avenue and
+  cross-street grid etched in shadow, breaking into an older tangle downtown; Central
+  Park a green rectangle with its reservoir; the two rivers as sheets of moving gold
+  with ferries dragging wakes; avenue traffic in streams (taxi-gold one way, brake-red
+  the other); Downtown and Midtown blazing while the windows ignite at dusk; bridge
+  necklaces and landmark beacons. Nothing is a raw mesh count — it is procedural,
+  instanced-in-spirit, one fullscreen shader, honest about its geography.
 - **The Biosphere** — life itself, rendered as a continuous cellular automaton
   (Lenia) on a GPU float field: *Orbium* gliders — true self-propelled organisms
-  that swim, turn and reproduce. The living world's ocean dissolves directly into
-  this pond as you descend. Zoom to explore.
+  that swim, turn and reproduce. The city's park-water dissolves directly into
+  this pond as you descend past street level. Zoom to explore.
 - **The Cell** — descend past the biosphere and one organism resolves into a single
   living cell: an undulating phospholipid membrane, a nucleus with chromatin and a
   nucleolus, warm mitochondria with cristae, vesicles in Brownian drift, and a
   **cytoskeleton** of filaments drawn the very same way as the cosmic web's threads.
   The largest structure and the smallest answer each other — web ↔ membrane, filament
   ↔ cytoskeleton, void ↔ cytosol — so the single zoom is bookended, cell to cosmic web,
-  by one recurring branching form.
+  by one recurring branching form. The **city's avenue grid** is that same form at the
+  human scale in between: cosmic web ↔ street grid ↔ cytoskeleton ↔ neuron.
 
 ### The Cosmic Calendar
 
@@ -83,7 +94,7 @@ Scenes (press **S**):
 
 ## Controls
 
-- **drag** orbit · **scroll / pinch** travel through scale · **click** follow a body · **Esc** stop following
+- **drag** orbit · **scroll / pinch** travel through scale (*flick to warp* — momentum accelerates across the ladder, so 30 orders of magnitude is a gesture, not hundreds of notches) · **- / =** fly out / in (hold to accelerate) · **click** follow a body · **Esc** stop following
 - **S** change system · **M** top-down "map" view · **F** fling worlds (then **1/2/3** comet / world / giant)
 - **space** pause · **[ ]** slower / faster · **T** trails · **G** belt self-gravity
 - **B** star ↔ black hole · **K** relativistic gravity · **C** particle count · **R** reset
@@ -153,7 +164,15 @@ them with no hard cut:
   Milky Way still marked at the centre. Galaxy distances run log-uniform from the Local
   Group out to ~400 Mpc, so the climb out of the galaxy is never empty: neighbours, then
   groups, then the grand web. The web's branching is the recurrence motif at its largest —
-  the same form as a neuron, a river delta, the Lenia organisms far below.
+  the same form as a neuron, a river delta, a city's avenues, the Lenia organisms far below.
+- **`CityBand`** — a living island metropolis on the inward ladder, between the world and
+  the biosphere (`logRange [2.6, 5.4]`): one fullscreen procedural shader keyed off
+  `logScale` that maps the screen into island space with a zoom-dependent window, so the
+  whole-island god view geo-morphs continuously down to street level in a single band. The
+  crisp street grid, canyon shadows, traffic streams and window lights *resolve with the
+  zoom* (far up it reads as one glowing urban mass; up close, individual blocks and cabs);
+  its park-water cross-fades up into the biosphere pond, its rivers down into the world's
+  ocean. Like the world/cell bands it needs no camera frame and carries zero float32 risk.
 - **`CellBand`** — the smallest scale there is (the inward counterpart of the web): a
   fullscreen procedural cell — membrane, nucleus, mitochondria, vesicles in Brownian
   drift, and a cytoskeleton filament-web rendered the same way as the cosmic web's

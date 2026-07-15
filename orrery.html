@@ -81,7 +81,7 @@
   <div class="title"><b>orrery</b><span>a hand-built universe · real laws · from a living cell to the cosmic web</span></div>
   <div class="readout" id="readout"></div>
   <div id="labels"></div>
-  <div class="help" id="help">drag to orbit · scroll to travel scales · click to follow · S changes system · F flings worlds</div>
+  <div class="help" id="help">drag to orbit · scroll to fly through scale (flick to warp) · click to follow · S changes system · F flings worlds</div>
   <div class="cal" id="cal"><div class="calbar" id="calbar"><div class="calfill" id="calfill"></div><div class="calhead" id="calhead"></div></div><div class="caltxt" id="caltxt"></div></div>
   <div class="bar" id="bar">
     <button id="bPlay" title="pause / play (space)">❚❚</button>
@@ -441,6 +441,7 @@ function clampLog(L){ return Math.max(minLog(),Math.min(LOG_MAX,L)); }
 function smooth01(x){ x=x<0?0:x>1?1:x; return x*x*(3-2*x); }
 let az=0.7,el=0.5,target=[0,0,0],azS=0.7,elS=0.5,distS=78,targetS=[0,0,0],followIdx=-1,lastInteract=performance.now();
 let logScale=logFromDist(78,AU), logScaleS=logScale, frameT=0;
+let zoomVel=0, zoomBoost=1, lastWheelT=0;   // momentum zoom: keep scrolling one way and it spins up like a warp drive, then coasts to rest — so crossing 30 orders of scale is a flick, not hundreds of notches
 let aspect=1,fwd=[0,0,1],rgt=[1,0,0],upc=[0,1,0],eye=[0,0,80],VP=new Float32Array(16),anchor=[0,0,0];
 function resetCam(){ az=0.7;el=0.5;target=[0,0,0];followIdx=-1; logScale=logScaleS=clampLog(logFromDist(defaultDist,camUnit)); distS=defaultDist; }
 function camBasis(){ aspect=W/H; const c=Math.cos(elS),s=Math.sin(elS); eye=[targetS[0]+distS*c*Math.sin(azS),targetS[1]+distS*s,targetS[2]+distS*c*Math.cos(azS)]; fwd=V.norm(V.sub(targetS,eye)); rgt=V.norm(V.cross(fwd,[0,1,0])); upc=V.cross(rgt,fwd); }
@@ -463,7 +464,7 @@ function wake(){ document.body.classList.remove('idle'); clearTimeout(idleT); id
 cvs.addEventListener('pointerdown',e=>{ cvs.setPointerCapture(e.pointerId); touches.set(e.pointerId,[e.clientX,e.clientY]); down=true;moved=false;lastX=e.clientX;lastY=e.clientY;panning=e.shiftKey;wake();document.body.classList.add('drag');
   if(launchMode){ const h=eclipticHit(rayThrough(...ndc(e))); if(h){aiming=true;aimA=h;aimB=h.slice();} } });
 cvs.addEventListener('pointermove',e=>{ if(touches.has(e.pointerId)) touches.set(e.pointerId,[e.clientX,e.clientY]); wake();
-  if(touches.size===2){ const v=[...touches.values()],d=Math.hypot(v[0][0]-v[1][0],v[0][1]-v[1][1]); if(pinch>0&&d>0){ logScale=clampLog(logScale+Math.log10(pinch/d)); } pinch=d; return; }
+  if(touches.size===2){ const v=[...touches.values()],d=Math.hypot(v[0][0]-v[1][0],v[0][1]-v[1][1]); if(pinch>0&&d>0){ const dl=Math.log10(pinch/d); logScale=clampLog(logScale+dl); zoomVel=Math.max(-0.9,Math.min(0.9, zoomVel*0.6+dl*1.8)); } pinch=d; return; }   // pinch carries momentum too, so a quick flick keeps gliding
   if(!down) return; const dx=e.clientX-lastX,dy=e.clientY-lastY; lastX=e.clientX;lastY=e.clientY; if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
   if(aiming){ const h=eclipticHit(rayThrough(...ndc(e))); if(h) aimB=h; return; }
   if(panning){ const k=distS*0.0016; target=[target[0]-(rgt[0]*dx-upc[0]*dy)*k,target[1]-(rgt[1]*dx-upc[1]*dy)*k,target[2]-(rgt[2]*dx-upc[2]*dy)*k]; followIdx=-1; }
@@ -471,7 +472,9 @@ cvs.addEventListener('pointermove',e=>{ if(touches.has(e.pointerId)) touches.set
 function up(e){ touches.delete(e.pointerId); if(touches.size<2) pinch=0; if(!down) return; down=false; document.body.classList.remove('drag');
   if(aiming){ aiming=false; if(aimA&&aimB&&V.len(V.sub(aimB,aimA))>0.4) doFling(aimA,aimB); aimA=aimB=null; return; } if(!moved&&!launchMode) pickFollow(e); }
 cvs.addEventListener('pointerup',up); cvs.addEventListener('pointercancel',up);
-cvs.addEventListener('wheel',e=>{ e.preventDefault(); logScale=clampLog(logScale+e.deltaY*0.0011/Math.LN10); wake(); },{passive:false});
+cvs.addEventListener('wheel',e=>{ e.preventDefault();
+  const now=performance.now(); zoomBoost = (now-lastWheelT<200) ? Math.min(zoomBoost*1.18,11) : 1; lastWheelT=now;   // continuous scrolling accelerates; a pause resets to precise single-notch control
+  zoomVel=Math.max(-0.9,Math.min(0.9, zoomVel + e.deltaY*0.000076*zoomBoost)); wake(); },{passive:false});
 function pickFollow(e){ const dir=rayThrough(...ndc(e)); let best=-1,bt=1e9; for(let i=0;i<B.length;i++){ const b=B[i],oc=V.sub(eye,b.pos),A=V.dot(dir,dir),bq=2*V.dot(oc,dir),cq=V.dot(oc,oc)-(b.radius*1.6)**2,disc=bq*bq-4*A*cq; if(disc>0){ const t=(-bq-Math.sqrt(disc))/(2*A); if(t>0&&t<bt){bt=t;best=i;} } } if(best>=0) followIdx=best; else {followIdx=-1;target=[0,0,0];} }
 
 /* ── controls / UI / seeds ── */
@@ -519,6 +522,8 @@ addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); wake();
   if(k===' '){ e.preventDefault(); $('bPlay').click(); } else if(k==='['){ $('bSlow').click(); } else if(k===']'){ $('bFast').click(); }
   else if(k==='t'){ $('bTrails').click(); } else if(k==='g'){ $('bPerturb').click(); } else if(k==='b'){ $('bHole').click(); } else if(k==='k'){ $('bGR').click(); }
   else if(k==='f'){ $('bFling').click(); } else if(k==='s'){ $('bSys').click(); } else if(k==='c'){ $('bCount').click(); } else if(k==='r'){ $('bReset').click(); } else if(k==='m'){ $('bMap').click(); }
+  else if(k==='-'||k==='_'){ zoomBoost=Math.min(zoomBoost*1.35,11); zoomVel=Math.max(-0.9,zoomVel+0.03*zoomBoost); }   // fly outward (hold to accelerate)
+  else if(k==='='||k==='+'){ zoomBoost=Math.min(zoomBoost*1.35,11); zoomVel=Math.min(0.9,zoomVel-0.03*zoomBoost); }    // fly inward (hold to accelerate)
   else if(k==='1'){ flingType='comet'; if(launchMode)$('bFling').textContent='fling: comet'; } else if(k==='2'){ flingType='world'; if(launchMode)$('bFling').textContent='fling: world'; } else if(k==='3'){ flingType='giant'; if(launchMode)$('bFling').textContent='fling: giant'; }
   else if(k==='escape'){ followIdx=-1; } });
 
@@ -848,12 +853,98 @@ void main(){ vec2 uv=vUv-0.5; uv.x*=uAspect; uv=uv*uZoom+0.5+uPan; float a=textu
   vec3 c=mix(bg,body,smoothstep(0.03,0.32,a)); c=mix(c,core,smoothstep(0.6,0.92,a));
   float edge=smoothstep(0.06,0.12,a)-smoothstep(0.14,0.26,a); c+=vec3(0.1,0.3,0.35)*edge; o=vec4(c,uAlpha); }`);
 function lifeStep(){ const dst=lifeCur^1; gl.bindFramebuffer(gl.FRAMEBUFFER,lifeFBO[dst]); gl.viewport(0,0,LIFE_RES,LIFE_RES); gl.disable(gl.BLEND); gl.useProgram(lifeStepP.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,lifeTex[lifeCur]); gl.uniform1i(lifeStepP.u.uF,0); gl.uniform2f(lifeStepP.u.uTexel,1/LIFE_RES,1/LIFE_RES); gl.uniform1f(lifeStepP.u.uMu,0.15); gl.uniform1f(lifeStepP.u.uSig,0.015); gl.uniform1f(lifeStepP.u.uDt,0.1); gl.bindVertexArray(quadVAO); gl.drawArrays(gl.TRIANGLES,0,6); lifeCur=dst; gl.bindFramebuffer(gl.FRAMEBUFFER,null); }
-const LifeBand={ name:'life', logRange:[-3.0,7.5], localUnit:1e-4, alpha:0,
+const LifeBand={ name:'life', logRange:[-3.0,3.7], localUnit:1e-4, alpha:0,
   update(){ if(paused) return; if(!lifeSeeded) lifeSeed(); const steps=Math.max(1,Math.min(3,Math.round(SPEEDS[spdI]))); for(let s=0;s<steps;s++) lifeStep(); lifePan[0]+=0.00004; if(++lifeStampT>220){ lifeStampT=0; lifeStamp1(); } },
-  render(alpha){ const frac=Math.min(1,Math.max(0,(logScaleS+3.0)/(7.5+3.0))),zoom=lerp(0.4,1.5,frac);
-    alpha*=1.0-smooth01((logScaleS-5.5)/(7.5-5.5));   // dissolve the pond into the world's ocean across the [5.5,7.5] overlap instead of hard-occluding it
+  render(alpha){ const frac=Math.min(1,Math.max(0,(logScaleS+3.0)/(3.7+3.0))),zoom=lerp(0.4,1.5,frac);
+    alpha*=1.0-smooth01((logScaleS-2.7)/(3.7-2.7));   // dissolve the pond up into the city's park-water across the [2.7,3.7] overlap (the city → biosphere handoff)
     gl.disable(gl.DEPTH_TEST);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
     gl.useProgram(lifeDrawP.p);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,lifeTex[lifeCur]);gl.uniform1i(lifeDrawP.u.uF,0);gl.uniform1f(lifeDrawP.u.uAlpha,alpha);gl.uniform1f(lifeDrawP.u.uZoom,zoom);gl.uniform1f(lifeDrawP.u.uAspect,aspect);gl.uniform2f(lifeDrawP.u.uPan,lifePan[0],lifePan[1]);gl.uniform1f(lifeDrawP.u.uLife,lifeFactor);
+    gl.bindVertexArray(quadVAO);gl.drawArrays(gl.TRIANGLES,0,6); gl.disable(gl.BLEND); } };
+
+/* —— the living city: descend past the world and its night-side lights resolve into a
+   BILLION-PIECE island metropolis, alive at every scale — a whole-island golden-hour
+   aerial that zooms without a seam down to street level. A tapering, tilted island (a
+   Battery-to-Inwood Manhattan in spirit); the avenue/cross-street grid etched in shadow,
+   breaking into an older tangle downtown; Central Park a green rectangle with its
+   reservoir; the two rivers as sheets of moving gold with ferries and wakes; avenue
+   traffic in streams (taxi-gold one way, brake-red the other); windows igniting at dusk;
+   bridge necklaces and landmark beacons. Its park-water then dissolves upward into the
+   biosphere pond below. Like the world/cell bands it is one fullscreen procedural shader
+   keyed only off logScale — zero float32 risk. The STREET GRID is the recurrence/branching
+   motif at the human scale: cosmic web ↔ avenues ↔ cytoskeleton ↔ neuron. —— */
+const cityP=prog(HEAD+`layout(location=0) in vec2 aPos; out vec2 vUv; void main(){ vUv=aPos*0.5+0.5; gl_Position=vec4(aPos,0.0,1.0);}`,
+HEAD+NOISE+`in vec2 vUv; out vec4 o; uniform float uAspect,uTime,uAlpha,uZoom,uNight;
+vec2 rot2(vec2 p,float a){ float c=cos(a),s=sin(a); return mat2(c,-s,s,c)*p; }
+float h21(vec2 p){ p=fract(p*vec2(123.34,345.45)); p+=dot(p,p+34.345); return fract(p.x*p.y); }
+vec2 h22(vec2 p){ return fract(sin(vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))))*43758.5453); }
+void main(){ vec2 uv=(vUv-0.5)*2.0; uv.x*=uAspect; float t=uTime;
+  float W=exp(mix(log(1.35),log(0.014),uZoom));                                             // window into island space: whole island up top, a few blocks at street level
+  vec2 center=mix(vec2(0.0,0.03),vec2(0.035,-0.16),smoothstep(0.0,1.0,uZoom));              // drift toward the downtown cluster as we descend
+  center+=vec2(0.004*sin(t*0.05),0.004*cos(t*0.043));                                       // faint life-drift so nothing is dead-still
+  vec2 P=uv*W+center; float IANG=0.50; vec2 Q=rot2(P,-IANG); float yy=Q.y;                  // island-aligned coords (Manhattan tilt); long axis = Q.y
+  float halfW=0.155+0.022*sin(yy*3.3+0.3)+0.012*sin(yy*7.0);                                // width bulges and narrows along the length (never pinching to water)
+  halfW*=smoothstep(-1.02,-0.62,yy); halfW*=smoothstep(1.06,0.86,yy);                       // taper to the south tip; narrow the north end
+  float coastN=fbm(vec3(Q*vec2(6.0,20.0)+5.0,0.0)); halfW+=0.010*(coastN-0.5);              // irregular coastline (piers, inlets)
+  float endGate=smoothstep(-1.05,-0.99,yy)*smoothstep(1.09,1.0,yy);
+  float land=smoothstep(-0.004,0.006,halfW-abs(Q.x))*endGate;                               // 1 on land, 0 on water
+  float ripple=fbm(vec3(P*40.0+vec2(0.0,t*0.25),t*0.15)), glint=pow(fbm(vec3(P*130.0-vec2(t*0.7,0.0),t*0.4)),4.0);
+  vec3 waterCol=mix(vec3(0.015,0.05,0.08),vec3(0.04,0.20,0.24),ripple)+vec3(1.0,0.75,0.4)*glint*3.2;  // deep teal (continuous with the world's ocean above) + sharp golden sun-glitter
+  vec2 G=Q; float tangle=smoothstep(-0.5,-0.64,yy);                                         // below ~14th St the grid tangles into an older street plan
+  G=mix(G,rot2(G,0.28)+0.02*vec2(fbm(vec3(G*8.0,1.0)),fbm(vec3(G*8.0,2.0))),tangle);
+  float NAV=42.0,NST=150.0; vec2 cell=vec2(G.x*NAV,G.y*NST); vec2 gf=abs(fract(cell)-0.5);  // avenues (const Q.x) and closer cross-streets (const Q.y)
+  float avLine=1.0-smoothstep(0.02,0.14,gf.x), stLine=1.0-smoothstep(0.03,0.16,gf.y), street=max(avLine*0.9,stLine);
+  float gridZoom=smoothstep(0.06,0.42,uZoom);                                                // the crisp street grid only resolves as you descend; far up the city reads as one lit mass
+  float roof=smoothstep(0.10,0.18,gf.x)*smoothstep(0.12,0.20,gf.y);                         // rooftops = well inside a block
+  vec2 blockId=floor(cell); float bh=h21(blockId); vec2 bh2=h22(blockId+3.1);
+  float midtown=exp(-pow((yy-0.03)/0.11,2.0)), downtown=exp(-pow((yy+0.70)/0.10,2.0)), core=max(midtown,downtown);
+  float bHeight=(0.24+0.76*core)*(0.3+0.7*bh);                                              // district height field × per-block variation
+  float districtLum=0.68+0.7*core;                                                          // Downtown & Midtown cores glow; residential sits dimmer — the whole island still reads
+  vec3 glass=mix(vec3(0.14,0.20,0.30),vec3(0.5,0.66,0.92),bh2.x), stone=mix(vec3(0.30,0.22,0.16),vec3(0.82,0.60,0.40),bh2.y);
+  vec3 roofCol=mix(stone,glass,smoothstep(0.45,0.9,bHeight))*mix(0.55,1.35,bHeight)*districtLum; // taller → glassier and catching more of the low sun
+  roofCol+=vec3(0.9,0.55,0.22)*core*bHeight*0.5;                                             // a warm amber cast over the blazing cores (not a white blow-out)
+  roofCol+=vec3(1.0,0.72,0.4)*pow(bHeight,2.0)*step(0.74,h21(blockId+9.0))*0.9;              // golden-hour sun-mirrors flaring off some glass towers
+  vec3 landCol=mix(vec3(0.02,0.018,0.02),roofCol,roof);
+  landCol*=(0.28+0.72*(1.0-0.85*street*gridZoom));                                           // canyons deepen as the grid resolves; far up they stay filled so the city reads as a mass
+  landCol*=mix(0.55,1.0,gridZoom);                                                           // and it brightens as you descend, so nothing blooms to white from orbit
+  float park=smoothstep(0.062,0.050,abs(Q.x))*smoothstep(0.27,0.285,yy)*smoothstep(0.525,0.51,yy);
+  vec3 greenery=mix(vec3(0.05,0.14,0.05),vec3(0.14,0.32,0.11),fbm(vec3(Q*60.0,t*0.05)));
+  float resv=smoothstep(0.016,0.011,length((Q-vec2(0.0,0.44))*vec2(1.5,1.0)));              // the reservoir
+  greenery=mix(greenery,waterCol*0.6+vec3(0.01,0.04,0.06),resv); landCol=mix(landCol,greenery,park);
+  vec3 col=mix(waterCol,landCol,land);
+  float trafZoom=smoothstep(0.12,0.5,uZoom);                                                // traffic resolves as we descend
+  float onAve=1.0-smoothstep(0.0,0.05,gf.x), aveSeed=h21(vec2(blockId.x,3.0));
+  float carUp=smoothstep(0.86,1.0,fract(G.y*NST*0.5-t*1.3+aveSeed)), carDn=smoothstep(0.86,1.0,fract(G.y*NST*0.5+t*1.05+0.5+aveSeed));
+  col+=(carUp*vec3(1.0,0.8,0.2)+carDn*vec3(1.0,0.15,0.05))*onAve*land*trafZoom*1.4;         // avenue streams: taxi-gold one way, brake-red the other
+  float onSt=1.0-smoothstep(0.0,0.05,gf.y), carX=smoothstep(0.9,1.0,fract(G.x*NAV*0.5-t*0.85+h21(vec2(4.0,blockId.y))));
+  col+=carX*onSt*land*trafZoom*vec3(0.95,0.9,0.75)*0.8;                                     // cross-town pulses
+  float winZoom=smoothstep(0.4,0.75,uZoom); vec2 wcell=floor(cell*6.0);
+  float lit=step(1.0-uNight*0.85,h21(wcell+11.0));
+  col+=roof*winZoom*lit*vec3(1.0,0.85,0.5)*0.7*mix(0.4,1.0,bHeight);                        // windows ignite progressively at dusk
+  for(int i=0;i<3;i++){ float by=-0.52+float(i)*0.075, d=abs(Q.y-by);                       // East-River bridges (Brooklyn/Manhattan/Williamsburg)
+    float span=smoothstep(0.005,0.0,d)*smoothstep(halfW-0.015,halfW,Q.x)*smoothstep(halfW+0.11,halfW+0.02,Q.x), cable=0.5+0.5*sin(Q.x*420.0);
+    col+=span*mix(vec3(0.45,0.36,0.26),vec3(1.0,0.85,0.5),uNight)*(0.5+0.7*cable); }
+  { float d=abs(Q.y-0.80), span=smoothstep(0.005,0.0,d)*smoothstep(-halfW+0.015,-halfW,Q.x)*smoothstep(-halfW-0.11,-halfW-0.02,Q.x), cable=0.5+0.5*sin(Q.x*380.0);
+    col+=span*mix(vec3(0.45,0.36,0.26),vec3(1.0,0.85,0.5),uNight)*(0.5+0.7*cable); }        // the George Washington Bridge at the top of the island
+  vec2 LM0=vec2(0.0,-0.70),LM1=vec2(0.012,0.02),LM2=vec2(-0.012,0.06),LM3=vec2(0.0,-0.55); // landmark beacons (Downtown / Midtown supertalls)
+  col+=vec3(1.0,0.92,0.72)*smoothstep(0.014,0.0,length(Q-LM0))*(0.7+0.5*sin(t*2.0));
+  col+=vec3(0.9,0.95,1.0)*smoothstep(0.012,0.0,length(Q-LM1))*(0.7+0.5*sin(t*2.0+1.0));
+  col+=vec3(1.0,0.9,0.7)*smoothstep(0.011,0.0,length(Q-LM2))*(0.7+0.5*sin(t*2.0+2.0));
+  col+=vec3(1.0,0.85,0.6)*smoothstep(0.010,0.0,length(Q-LM3))*(0.7+0.5*sin(t*2.0+3.0));
+  for(int i=0;i<4;i++){ float fi=float(i), ph=fract(t*0.03+fi*0.27);                        // ferries crossing the rivers, each dragging a V-wake
+    vec2 fp=mix(vec2(-0.34,-0.35+fi*0.22),vec2(0.36,-0.22+fi*0.16),ph); fp.x+=0.03*sin(t*0.5+fi);
+    col+=vec3(1.0,0.95,0.8)*smoothstep(0.005,0.0,length(P-fp))*(1.0-land);
+    vec2 dir=normalize(vec2(0.7,0.2)), rel=P-fp;
+    float wake=smoothstep(0.016,0.0,abs(dot(rel,vec2(-dir.y,dir.x))))*smoothstep(0.05,0.0,max(0.0,dot(rel,-dir)));
+    col+=vec3(0.75,0.8,0.75)*wake*0.25*(1.0-land); }
+  float r=length(uv);
+  col=mix(col,vec3(0.55,0.5,0.55)*0.35,(1.0-uZoom)*0.18*smoothstep(0.5,1.1,r));             // atmospheric haze up top so the band blends into the world as it fades in
+  col*=mix(1.0,0.82,smoothstep(0.6,1.25,r));                                                // gentle vignette
+  o=vec4(col,uAlpha); }`);
+const CityBand={ name:'city', logRange:[2.6,5.4], localUnit:1e2, alpha:0, update(){},
+  render(alpha){ const frac=Math.min(1,Math.max(0,(5.4-logScaleS)/(5.4-2.6)));             // 0 at the whole-island god view, 1 at street level
+    const night=0.5+0.5*Math.sin(frameT*0.06);                                             // a slow golden-hour → dusk breath that ignites the windows
+    gl.disable(gl.DEPTH_TEST);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(cityP.p);gl.uniform1f(cityP.u.uAspect,aspect);gl.uniform1f(cityP.u.uZoom,frac);gl.uniform1f(cityP.u.uTime,frameT);gl.uniform1f(cityP.u.uAlpha,alpha);gl.uniform1f(cityP.u.uNight,night);
     gl.bindVertexArray(quadVAO);gl.drawArrays(gl.TRIANGLES,0,6); gl.disable(gl.BLEND); } };
 
 /* —— the cell: descend past the biosphere and one Lenia organism resolves into a single
@@ -920,13 +1011,14 @@ const RecurrenceBand={ name:'recurrence', logRange:[17.3,18.7], localUnit:LY, al
     gl.useProgram(recP.p);gl.uniformMatrix4fv(recP.u.uVP,false,vp);gl.uniform3fv(recP.u.uAnchor,e);gl.uniform1f(recP.u.uPhase,p);gl.uniform1f(recP.u.uTime,frameT);gl.uniform1f(recP.u.uPx,9.0*DPR);gl.uniform1f(recP.u.uAlpha,alpha*0.95);
     gl.bindVertexArray(recVAO);gl.drawArrays(gl.POINTS,0,REC_N);gl.bindVertexArray(null); gl.disable(gl.BLEND);gl.depthMask(true); } };
 
-const bands=[SolarBand, OortBand, NeighbourhoodBand, GalacticBand, CosmicWebBand, RecurrenceBand, WorldBand, LifeBand, CellBand];   // adding a scale = one Band; the renderer loop is unchanged
+const bands=[SolarBand, OortBand, NeighbourhoodBand, GalacticBand, CosmicWebBand, RecurrenceBand, WorldBand, LifeBand, CityBand, CellBand];   // adding a scale = one Band; the renderer loop is unchanged. City draws over the world/pond in its window and reveals the pond again as it fades at street level.
 function updateScene(){ for(const bd of bands){ if(bd.alpha>0.001) bd.update(0,1); } }
 /* chapter card follows the dominant scale (band), not just the preset */
 const BCHAP={ cellular:['The Cell','one organism becomes a living cell — membrane, nucleus, mitochondria; the same filaments and branching as the cosmic web, at the smallest scale'],
   cosmicweb:['The Cosmic Web','galaxies strung on filaments around vast voids — the same branching as a neuron, a root, a river, at the grandest scale'],
   recurrence:['Recurrence','the same forms return — a flock, a cluster, a galaxy'],
   world:['A Living World','oceans, weather, and the thin blue line of an atmosphere'],
+  city:['A Living City','a billion-piece island, alive — the grid etched in shadow, rivers of gold, streams of traffic; the same branching as the cosmic web, at the human scale'],
   life:['The Biosphere','continuous life — patterns that grow, move, and reproduce'],
   oort:['The Oort Cloud',"a shell of sleeping comets at the edge of the Sun's reach"],
   neighbourhood:['The Stellar Neighbourhood','the Sun, one star adrift among thousands'],
@@ -948,6 +1040,7 @@ function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[foll
   else { if(!reduce){ if(mapView&&!down) az+=0.0012;   // gentle auto-orbit of the map (paused while dragging)
       else if(performance.now()-lastInteract>4200&&followIdx<0&&!aiming) az+=0.0006; }
     if(mapView) el=1.52;   // top-down "map" framing (face-on to the disk plane)
+    if(zoomVel!==0){ logScale=clampLog(logScale+zoomVel); zoomVel*=0.84; if(Math.abs(zoomVel)<8e-5){ zoomVel=0; zoomBoost=1; } else wake(); }   // glide the momentum zoom and coast to rest
     azS+=(az-azS)*0.12;elS+=(el-elS)*0.12;logScaleS+=(logScale-logScaleS)*0.12; distS=distFromLog(logScaleS,camUnit);
     targetS[0]+=(target[0]-targetS[0])*0.12;targetS[1]+=(target[1]-targetS[1])*0.12;targetS[2]+=(target[2]-targetS[2])*0.12; }
   camBasis();
@@ -959,7 +1052,7 @@ function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[foll
   const outA=Math.max(OortBand.alpha,NeighbourhoodBand.alpha,GalacticBand.alpha,CosmicWebBand.alpha,RecurrenceBand.alpha,WorldBand.alpha,LifeBand.alpha);
   if(outA>0.001&&followIdx<0){ const g=1-outA; target=[target[0]*g,target[1]*g,target[2]*g]; }   // the other bands are all origin-centred — ease any solar-frame pan back home as they take over, so the cross-fade stays aligned
   updateScaleChapter();
-  skyDim=1.0-0.85*Math.max(NeighbourhoodBand.alpha,GalacticBand.alpha,CosmicWebBand.alpha,WorldBand.alpha,LifeBand.alpha,RecurrenceBand.alpha,CellBand.alpha);   // deepen the void as we leave the solar scale
+  skyDim=1.0-0.85*Math.max(NeighbourhoodBand.alpha,GalacticBand.alpha,CosmicWebBand.alpha,WorldBand.alpha,LifeBand.alpha,CityBand.alpha,RecurrenceBand.alpha,CellBand.alpha);   // deepen the void as we leave the solar scale
   const tF=tanHF,cd=(x,y)=>[fwd[0]+x*tF*aspect*rgt[0]+y*tF*upc[0],fwd[1]+x*tF*aspect*rgt[1]+y*tF*upc[1],fwd[2]+x*tF*aspect*rgt[2]+y*tF*upc[2]],corners=[cd(-1,-1),cd(1,-1),cd(-1,1),cd(1,1)];
   gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFBO.f); gl.viewport(0,0,W,H); gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   gl.disable(gl.DEPTH_TEST);gl.depthMask(false);gl.disable(gl.BLEND); if(lensActive) drawGeo(corners); else drawSky(corners);     // shared background (renderer-owned)
@@ -982,7 +1075,7 @@ function scaleAcross(L){ const m=Math.pow(10,L);
   if(m<3e16) return (m/9.4607e15).toPrecision(2)+' ly';
   if(m<3e19) return (m/3.0857e16).toPrecision(2)+' pc';
   return (m/3.0857e19).toPrecision(2)+' kpc'; }
-function scaleBand(L){ return L<-4.5?'molecular':L<-2.0?'the cell':L<0.5?'microbial':L<4?'the biosphere':L<7?'the surface':L<10?'a living world':L<11.8?'inner system':L<13.3?'solar system':L<14.3?'outer system':L<15.8?'oort cloud':L<18.0?'stellar neighbourhood':L<20.0?'spiral arm':L<21.8?'the galaxy':L<23.6?'galaxy groups':'the cosmic web'; }
+function scaleBand(L){ return L<-4.5?'molecular':L<-2.0?'the cell':L<0.5?'microbial':L<2.6?'the biosphere':L<5.4?'a living city':L<7.2?'the surface':L<10?'a living world':L<11.8?'inner system':L<13.3?'solar system':L<14.3?'outer system':L<15.8?'oort cloud':L<18.0?'stellar neighbourhood':L<20.0?'spiral arm':L<21.8?'the galaxy':L<23.6?'galaxy groups':'the cosmic web'; }
 let frames=0,fpsT=performance.now(),fps=60;
 function loop(){ const t=performance.now()/1000; updateScene(); updateCalendar(); render(t);
   frames++; const now=performance.now(); if(now-fpsT>500){ fps=Math.round(frames*1000/(now-fpsT)); frames=0; fpsT=now; const pc=gpuOK?gpuCount:astCount;

@@ -94,7 +94,7 @@ Scenes (press **S**):
 
 ## Controls
 
-- **drag** orbit · **scroll / pinch** travel through scale · **click** follow a body · **Esc** stop following
+- **drag** orbit · **scroll / pinch** travel through scale (*flick to warp* — momentum accelerates across the ladder, so 30 orders of magnitude is a gesture, not hundreds of notches) · **- / =** fly out / in (hold to accelerate) · **click** follow a body · **Esc** stop following
 - **S** change system · **M** top-down "map" view · **F** fling worlds (then **1/2/3** comet / world / giant)
 - **space** pause · **[ ]** slower / faster · **T** trails · **G** belt self-gravity
 - **B** star ↔ black hole · **K** relativistic gravity · **C** particle count · **R** reset

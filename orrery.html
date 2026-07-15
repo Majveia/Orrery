@@ -81,7 +81,7 @@
   <div class="title"><b>orrery</b><span>a hand-built universe · real laws · from a living cell to the cosmic web</span></div>
   <div class="readout" id="readout"></div>
   <div id="labels"></div>
-  <div class="help" id="help">drag to orbit · scroll to travel scales · click to follow · S changes system · F flings worlds</div>
+  <div class="help" id="help">drag to orbit · scroll to fly through scale (flick to warp) · click to follow · S changes system · F flings worlds</div>
   <div class="cal" id="cal"><div class="calbar" id="calbar"><div class="calfill" id="calfill"></div><div class="calhead" id="calhead"></div></div><div class="caltxt" id="caltxt"></div></div>
   <div class="bar" id="bar">
     <button id="bPlay" title="pause / play (space)">❚❚</button>
@@ -441,6 +441,7 @@ function clampLog(L){ return Math.max(minLog(),Math.min(LOG_MAX,L)); }
 function smooth01(x){ x=x<0?0:x>1?1:x; return x*x*(3-2*x); }
 let az=0.7,el=0.5,target=[0,0,0],azS=0.7,elS=0.5,distS=78,targetS=[0,0,0],followIdx=-1,lastInteract=performance.now();
 let logScale=logFromDist(78,AU), logScaleS=logScale, frameT=0;
+let zoomVel=0, zoomBoost=1, lastWheelT=0;   // momentum zoom: keep scrolling one way and it spins up like a warp drive, then coasts to rest — so crossing 30 orders of scale is a flick, not hundreds of notches
 let aspect=1,fwd=[0,0,1],rgt=[1,0,0],upc=[0,1,0],eye=[0,0,80],VP=new Float32Array(16),anchor=[0,0,0];
 function resetCam(){ az=0.7;el=0.5;target=[0,0,0];followIdx=-1; logScale=logScaleS=clampLog(logFromDist(defaultDist,camUnit)); distS=defaultDist; }
 function camBasis(){ aspect=W/H; const c=Math.cos(elS),s=Math.sin(elS); eye=[targetS[0]+distS*c*Math.sin(azS),targetS[1]+distS*s,targetS[2]+distS*c*Math.cos(azS)]; fwd=V.norm(V.sub(targetS,eye)); rgt=V.norm(V.cross(fwd,[0,1,0])); upc=V.cross(rgt,fwd); }
@@ -463,7 +464,7 @@ function wake(){ document.body.classList.remove('idle'); clearTimeout(idleT); id
 cvs.addEventListener('pointerdown',e=>{ cvs.setPointerCapture(e.pointerId); touches.set(e.pointerId,[e.clientX,e.clientY]); down=true;moved=false;lastX=e.clientX;lastY=e.clientY;panning=e.shiftKey;wake();document.body.classList.add('drag');
   if(launchMode){ const h=eclipticHit(rayThrough(...ndc(e))); if(h){aiming=true;aimA=h;aimB=h.slice();} } });
 cvs.addEventListener('pointermove',e=>{ if(touches.has(e.pointerId)) touches.set(e.pointerId,[e.clientX,e.clientY]); wake();
-  if(touches.size===2){ const v=[...touches.values()],d=Math.hypot(v[0][0]-v[1][0],v[0][1]-v[1][1]); if(pinch>0&&d>0){ logScale=clampLog(logScale+Math.log10(pinch/d)); } pinch=d; return; }
+  if(touches.size===2){ const v=[...touches.values()],d=Math.hypot(v[0][0]-v[1][0],v[0][1]-v[1][1]); if(pinch>0&&d>0){ const dl=Math.log10(pinch/d); logScale=clampLog(logScale+dl); zoomVel=Math.max(-0.9,Math.min(0.9, zoomVel*0.6+dl*1.8)); } pinch=d; return; }   // pinch carries momentum too, so a quick flick keeps gliding
   if(!down) return; const dx=e.clientX-lastX,dy=e.clientY-lastY; lastX=e.clientX;lastY=e.clientY; if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
   if(aiming){ const h=eclipticHit(rayThrough(...ndc(e))); if(h) aimB=h; return; }
   if(panning){ const k=distS*0.0016; target=[target[0]-(rgt[0]*dx-upc[0]*dy)*k,target[1]-(rgt[1]*dx-upc[1]*dy)*k,target[2]-(rgt[2]*dx-upc[2]*dy)*k]; followIdx=-1; }
@@ -471,7 +472,9 @@ cvs.addEventListener('pointermove',e=>{ if(touches.has(e.pointerId)) touches.set
 function up(e){ touches.delete(e.pointerId); if(touches.size<2) pinch=0; if(!down) return; down=false; document.body.classList.remove('drag');
   if(aiming){ aiming=false; if(aimA&&aimB&&V.len(V.sub(aimB,aimA))>0.4) doFling(aimA,aimB); aimA=aimB=null; return; } if(!moved&&!launchMode) pickFollow(e); }
 cvs.addEventListener('pointerup',up); cvs.addEventListener('pointercancel',up);
-cvs.addEventListener('wheel',e=>{ e.preventDefault(); logScale=clampLog(logScale+e.deltaY*0.0011/Math.LN10); wake(); },{passive:false});
+cvs.addEventListener('wheel',e=>{ e.preventDefault();
+  const now=performance.now(); zoomBoost = (now-lastWheelT<200) ? Math.min(zoomBoost*1.18,11) : 1; lastWheelT=now;   // continuous scrolling accelerates; a pause resets to precise single-notch control
+  zoomVel=Math.max(-0.9,Math.min(0.9, zoomVel + e.deltaY*0.000076*zoomBoost)); wake(); },{passive:false});
 function pickFollow(e){ const dir=rayThrough(...ndc(e)); let best=-1,bt=1e9; for(let i=0;i<B.length;i++){ const b=B[i],oc=V.sub(eye,b.pos),A=V.dot(dir,dir),bq=2*V.dot(oc,dir),cq=V.dot(oc,oc)-(b.radius*1.6)**2,disc=bq*bq-4*A*cq; if(disc>0){ const t=(-bq-Math.sqrt(disc))/(2*A); if(t>0&&t<bt){bt=t;best=i;} } } if(best>=0) followIdx=best; else {followIdx=-1;target=[0,0,0];} }
 
 /* ── controls / UI / seeds ── */
@@ -519,6 +522,8 @@ addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); wake();
   if(k===' '){ e.preventDefault(); $('bPlay').click(); } else if(k==='['){ $('bSlow').click(); } else if(k===']'){ $('bFast').click(); }
   else if(k==='t'){ $('bTrails').click(); } else if(k==='g'){ $('bPerturb').click(); } else if(k==='b'){ $('bHole').click(); } else if(k==='k'){ $('bGR').click(); }
   else if(k==='f'){ $('bFling').click(); } else if(k==='s'){ $('bSys').click(); } else if(k==='c'){ $('bCount').click(); } else if(k==='r'){ $('bReset').click(); } else if(k==='m'){ $('bMap').click(); }
+  else if(k==='-'||k==='_'){ zoomBoost=Math.min(zoomBoost*1.35,11); zoomVel=Math.max(-0.9,zoomVel+0.03*zoomBoost); }   // fly outward (hold to accelerate)
+  else if(k==='='||k==='+'){ zoomBoost=Math.min(zoomBoost*1.35,11); zoomVel=Math.min(0.9,zoomVel-0.03*zoomBoost); }    // fly inward (hold to accelerate)
   else if(k==='1'){ flingType='comet'; if(launchMode)$('bFling').textContent='fling: comet'; } else if(k==='2'){ flingType='world'; if(launchMode)$('bFling').textContent='fling: world'; } else if(k==='3'){ flingType='giant'; if(launchMode)$('bFling').textContent='fling: giant'; }
   else if(k==='escape'){ followIdx=-1; } });
 
@@ -1035,6 +1040,7 @@ function render(t){ frameT=t; if(followIdx>=0&&followIdx<B.length) target=B[foll
   else { if(!reduce){ if(mapView&&!down) az+=0.0012;   // gentle auto-orbit of the map (paused while dragging)
       else if(performance.now()-lastInteract>4200&&followIdx<0&&!aiming) az+=0.0006; }
     if(mapView) el=1.52;   // top-down "map" framing (face-on to the disk plane)
+    if(zoomVel!==0){ logScale=clampLog(logScale+zoomVel); zoomVel*=0.84; if(Math.abs(zoomVel)<8e-5){ zoomVel=0; zoomBoost=1; } else wake(); }   // glide the momentum zoom and coast to rest
     azS+=(az-azS)*0.12;elS+=(el-elS)*0.12;logScaleS+=(logScale-logScaleS)*0.12; distS=distFromLog(logScaleS,camUnit);
     targetS[0]+=(target[0]-targetS[0])*0.12;targetS[1]+=(target[1]-targetS[1])*0.12;targetS[2]+=(target[2]-targetS[2])*0.12; }
   camBasis();

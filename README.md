@@ -1,6 +1,6 @@
 # orrery
 
-A hand-built universe in a single HTML file — real gravitational physics, rendered in real time on WebGL2, tuned to be genuinely beautiful on an OLED display.
+A hand-built universe in a single HTML file — real gravitational physics, rendered in real time on WebGL2, tuned to be genuinely beautiful on an OLED display, and adaptive from a phone to a workstation.
 
 Open `orrery.html` in a modern browser (Chrome, Firefox, Safari, Edge). No build step, no dependencies.
 
@@ -94,7 +94,7 @@ Scenes (press **S**):
 
 ## Controls
 
-- **drag** orbit · **scroll / pinch** travel through scale (*flick to warp* — momentum accelerates across the ladder, so 30 orders of magnitude is a gesture, not hundreds of notches) · **- / =** fly out / in (hold to accelerate) · **click** follow a body · **Esc** stop following
+- **drag** orbit · **scroll / pinch** travel through scale (*flick to warp* — momentum accelerates across the ladder, so 30 orders of magnitude is a gesture, not hundreds of notches) · **- / =** fly out / in (hold to accelerate) · **click / tap** follow a body · **double-tap / double-click** dive inward · **Esc** stop following
 - **S** change system · **M** top-down "map" view · **F** fling worlds (then **1/2/3** comet / world / giant)
 - **space** pause · **[ ]** slower / faster · **T** trails · **G** belt self-gravity
 - **B** star ↔ black hole · **K** relativistic gravity · **C** particle count · **R** reset
@@ -102,7 +102,8 @@ Scenes (press **S**):
 - **copy / load** serialize the whole universe to a seed string and share it
 
 The HUD shows the current scale — `logScale` (log₁₀ of metres across the screen), a
-human-readable span ("67 AU", "stellar neighbourhood"), bodies, particles and fps.
+human-readable span ("67 AU", "stellar neighbourhood"), bodies, particles, fps and the
+live render-quality percent (`q`).
 
 ## How it works
 
@@ -115,8 +116,17 @@ Everything is one file. The simulation core:
   integrate on the GPU in a transform-feedback shader, attracted by up to 64
   massive bodies, with optional dark-matter-halo and Hubble-expansion terms.
 - **Rendering** is HDR into a float-ish target with threshold bloom, ACES tone
-  mapping, subtle filmic grain and vignette, a procedural nebula sky, and a
-  full-screen geodesic integrator for the black hole's lensed background.
+  mapping, subtle filmic grain, vignette and a faint edge chromatic aberration, a
+  procedural nebula sky, and a full-screen geodesic integrator for the black hole's
+  lensed background. The worlds carry sunlit atmospheric limbs with day-side scattering
+  and a specular sun-glint off their oceans; the Sun granulates and flares a
+  chromospheric corona through the bloom.
+- **Runs on anything** — one adaptive *render-scale* folds into the device pixel ratio,
+  and an **FPS governor** nudges it (never the simulation) to hold a smooth frame rate on
+  everything from a phone to a workstation; the HUD shows the live quality percent. It
+  starts conservative on phones / weak GPUs and climbs when there's headroom. Touch-first:
+  drag to orbit, pinch or flick to warp through scale, double-tap to dive, with ≥44 px tap
+  targets, momentum-scrolling controls and safe-area insets on mobile.
 
 Tunable physics constants live at the top of each preset in `buildScene()`.
 

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>orrery · hybrid (three.js)</title>
+<style>
+  :root{ --ink:#efe9df; --dim:rgba(239,233,223,.34); --dim2:rgba(239,233,223,.16); --gold:#ffcf8c; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:#04030a;overflow:hidden;overscroll-behavior:none}
+  body{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;color:var(--ink);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+  body.drag{cursor:grabbing}
+  #c{position:fixed;inset:0;display:block}
+  .grain{position:fixed;inset:0;pointer-events:none;z-index:6;opacity:.035;mix-blend-mode:screen;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E")}
+  .title{position:fixed;left:18px;top:calc(15px + env(safe-area-inset-top));z-index:7;font-size:11px;letter-spacing:.42em;text-transform:uppercase;color:var(--dim);transition:opacity .6s ease}
+  .title b{font-weight:600;color:rgba(239,233,223,.55)}
+  .title span{display:block;margin-top:5px;font-size:9px;letter-spacing:.22em;text-transform:none;color:var(--dim2)}
+  .readout{position:fixed;right:16px;top:calc(15px + env(safe-area-inset-top));z-index:7;text-align:right;font-size:10px;letter-spacing:.12em;color:var(--dim2);line-height:1.7;transition:opacity .6s ease}
+  .readout b{color:var(--dim)}
+  .help{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:7;font-size:10.5px;letter-spacing:.2em;text-transform:lowercase;color:var(--dim2);white-space:nowrap;text-align:center;pointer-events:none;transition:opacity .6s ease}
+  body.idle .title, body.idle .readout, body.idle .help{opacity:0}
+  .err{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:10vw;color:var(--dim);font-size:13px;line-height:1.8;z-index:30}
+  @media (pointer:coarse){ .help{display:none} .title span{display:none} }
+</style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div class="grain"></div>
+  <div class="title"><b>ORRERY</b> · hybrid<span>a three.js prototype of the planetary scene</span></div>
+  <div class="readout" id="readout"></div>
+  <div class="help">drag to orbit · scroll / pinch to zoom · click a world to frame it</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const mobile = matchMedia('(pointer:coarse)').matches, reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* the Orrery's own procedural noise, so the hybrid scene keeps the hand-built look */
+const NOISE = `
+float hash31(vec3 p){ p=fract(p*0.3183099+vec3(0.1,0.2,0.3)); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+float vnoise(vec3 x){ vec3 i=floor(x),f=fract(x); f=f*f*(3.0-2.0*f);
+  return mix(mix(mix(hash31(i+vec3(0,0,0)),hash31(i+vec3(1,0,0)),f.x),mix(hash31(i+vec3(0,1,0)),hash31(i+vec3(1,1,0)),f.x),f.y),
+             mix(mix(hash31(i+vec3(0,0,1)),hash31(i+vec3(1,0,1)),f.x),mix(hash31(i+vec3(0,1,1)),hash31(i+vec3(1,1,1)),f.x),f.y),f.z); }
+float fbm(vec3 p){ float a=0.5,s=0.0; for(int i=0;i<5;i++){ s+=a*vnoise(p); p*=2.02; a*=0.5; } return s; }`;
+
+const canvas = document.getElementById('c');
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias:!mobile, powerPreference:'high-performance' }); }
+catch(e){ showErr(); throw e; }
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 8000);
+camera.position.set(60, 34, 96);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 6; controls.maxDistance = 900; controls.zoomSpeed = 0.9; controls.rotateSpeed = 0.55;
+controls.target.set(0,0,0);
+renderer.domElement.addEventListener('pointerdown', ()=>document.body.classList.add('drag'));
+addEventListener('pointerup', ()=>document.body.classList.remove('drag'));
+
+const SUN = new THREE.Vector3(0,0,0);
+const clock = new THREE.Clock();
+
+/* nebula backdrop — the same procedural sky as the raw-WebGL2 Orrery */
+{
+  const mat = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite:false, uniforms:{},
+    vertexShader:`varying vec3 vDir; void main(){ vDir=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: NOISE + `varying vec3 vDir; void main(){ vec3 dir=normalize(vDir);
+      float n=fbm(dir*1.4+11.0),n2=fbm(dir*3.1-5.0),mask=smoothstep(0.42,0.92,fbm(dir*0.7+2.0));
+      vec3 neb=mix(vec3(0.02,0.03,0.08),vec3(0.30,0.09,0.30),n)+vec3(0.0,0.16,0.22)*pow(max(n2,0.0),2.0)+vec3(0.26,0.15,0.04)*pow(max(n-0.5,0.0),1.5);
+      neb*=mask*0.5; gl_FragColor=vec4(neb+vec3(0.006,0.008,0.016),1.0); }` });
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(5000, 32, 24), mat));
+}
+
+/* starfield — colour-temperature varied points with a faint twinkle */
+{
+  const N = mobile?2600:6000, pos=new Float32Array(N*3), col=new Float32Array(N*3), siz=new Float32Array(N);
+  const spec=[[1.0,0.5,0.32],[1.0,0.72,0.45],[1.0,0.9,0.7],[1.0,0.97,0.92],[0.82,0.86,1.0],[0.7,0.8,1.0]];
+  for(let i=0;i<N;i++){ const r=1600+Math.random()*2200, u=Math.random()*2-1, t=Math.random()*Math.PI*2, s=Math.sqrt(1-u*u);
+    pos[i*3]=r*s*Math.cos(t); pos[i*3+1]=r*u; pos[i*3+2]=r*s*Math.sin(t);
+    const c=spec[(Math.random()*Math.random()*spec.length)|0]||spec[0], b=0.5+Math.random()*0.9;
+    col[i*3]=c[0]*b; col[i*3+1]=c[1]*b; col[i*3+2]=c[2]*b; siz[i]=(Math.random()<0.04?2.6:1.0)+Math.random(); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.setAttribute('aColor',new THREE.BufferAttribute(col,3)); g.setAttribute('asize',new THREE.BufferAttribute(siz,1));
+  const m=new THREE.ShaderMaterial({ transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, uniforms:{ uT:{value:0} },
+    vertexShader:`attribute float asize; attribute vec3 aColor; varying vec3 vC; varying float vTw; uniform float uT;
+      void main(){ vC=aColor; vTw=0.75+0.25*sin(uT*1.5+asize*40.0); vec4 mv=modelViewMatrix*vec4(position,1.0); gl_Position=projectionMatrix*mv; gl_PointSize=asize*420.0/max(-mv.z,1.0); }`,
+    fragmentShader:`varying vec3 vC; varying float vTw; void main(){ vec2 q=gl_PointCoord*2.0-1.0; float d=dot(q,q); if(d>1.0) discard; gl_FragColor=vec4(vC*vTw*(1.0-d)*1.7,1.0); }` });
+  const stars=new THREE.Points(g,m); stars.userData.mat=m; scene.add(stars); window._stars=stars;
+}
+
+/* the Sun — granulating core + additive corona shell */
+const sunMat = new THREE.ShaderMaterial({ uniforms:{ uT:{value:0} },
+  vertexShader:`varying vec3 vN; varying vec3 vW; void main(){ vN=normalize(normal); vW=(modelMatrix*vec4(position,1.0)).xyz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: NOISE + `varying vec3 vN; varying vec3 vW; uniform float uT;
+    void main(){ vec3 N=normalize(vN), Vv=normalize(cameraPosition-vW);
+      float g=fbm(N*4.0+uT*0.05), gg=fbm(N*12.0-uT*0.08), gr=fbm(N*26.0+uT*0.06);
+      vec3 c=vec3(1.0,0.83,0.5)*(0.72+0.5*g)+vec3(0.35,0.16,0.0)*gg+vec3(0.55,0.32,0.06)*gr*0.45;
+      float mu=max(dot(N,Vv),0.0); c*=(0.55+0.62*sqrt(mu)); c+=vec3(1.0,0.55,0.2)*pow(1.0-mu,2.2)*1.5;
+      gl_FragColor=vec4(c*2.1,1.0); }` });
+const sun = new THREE.Mesh(new THREE.SphereGeometry(3.2, 48, 48), sunMat); scene.add(sun);
+{ const cm=new THREE.ShaderMaterial({ transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.BackSide,
+    vertexShader:`varying vec3 vN; varying vec3 vW; void main(){ vN=normalize(mat3(modelMatrix)*normal); vW=(modelMatrix*vec4(position,1.0)).xyz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader:`varying vec3 vN; varying vec3 vW; void main(){ vec3 Vv=normalize(cameraPosition-vW); float f=pow(clamp(1.0-abs(dot(normalize(vN),Vv)),0.0,1.0),2.4); gl_FragColor=vec4(vec3(1.0,0.55,0.2)*f*0.9, f); }` });
+  sun.add(new THREE.Mesh(new THREE.SphereGeometry(6.4,32,32), cm)); }
+const sunLight = new THREE.PointLight(0xfff2d6, 1.0, 0, 0.15); scene.add(sunLight);
+scene.add(new THREE.AmbientLight(0x223047, 0.25));
+
+/* procedural planet material — ports the Orrery's body shader into three */
+function planetMaterial(type, color){
+  return new THREE.ShaderMaterial({ uniforms:{ uT:{value:0}, uSun:{value:SUN}, uType:{value:type}, uColor:{value:new THREE.Color(color)} },
+    vertexShader:`varying vec3 vN; varying vec3 vW; void main(){ vW=(modelMatrix*vec4(position,1.0)).xyz; vN=normalize(mat3(modelMatrix)*normal); gl_Position=projectionMatrix*viewMatrix*vec4(vW,1.0); }`,
+    fragmentShader: NOISE + `varying vec3 vN; varying vec3 vW; uniform float uT,uType; uniform vec3 uSun,uColor;
+      void main(){ vec3 N=normalize(vN), Vv=normalize(cameraPosition-vW), L=normalize(uSun-vW); float diff=max(dot(N,L),0.0); vec3 base,emis=vec3(0.0);
+        if(uType<0.5){ float n=fbm(N*5.0); base=mix(vec3(0.22,0.15,0.10),vec3(0.5,0.42,0.35),n); base=mix(base,vec3(0.13,0.11,0.10),smoothstep(0.6,0.9,fbm(N*11.0))); }
+        else if(uType<1.5){ float bb=sin(N.y*9.0+fbm(N*3.0)*2.5); base=mix(uColor*0.65,uColor*1.18,0.5+0.5*bb); base=mix(base,vec3(0.92,0.86,0.78),smoothstep(0.78,0.92,fbm(N*6.0+3.0))*0.5);
+          float spot=smoothstep(0.17,0.0,length(vec2(atan(N.z,N.x)-1.0,(N.y-0.2)*2.4))); base=mix(base,vec3(0.82,0.36,0.22),spot*0.85); }
+        else if(uType<2.5){ float n=fbm(N*6.0); base=mix(vec3(0.7,0.8,0.95),vec3(0.92,0.96,1.0),n); base=mix(base,vec3(0.4,0.55,0.8),smoothstep(0.55,0.75,fbm(N*14.0))*0.5); }
+        else if(uType<3.5){ float land=fbm(N*4.0); base=land>0.55?mix(vec3(0.14,0.4,0.18),vec3(0.55,0.5,0.32),smoothstep(0.55,0.78,land)):vec3(0.04,0.18,0.42);
+          float cloud=smoothstep(0.58,0.82,fbm(N*3.0+uT*0.01)); base=mix(base,vec3(0.9,0.92,0.95),cloud*0.45); base=mix(base,vec3(0.95),smoothstep(0.72,0.96,abs(N.y)));
+          emis+=vec3(1.0,0.78,0.42)*smoothstep(0.62,0.66,fbm(N*7.0))*step(0.55,land)*smoothstep(0.06,-0.16,dot(N,L))*0.9;
+          vec3 Hh=normalize(L+Vv); emis+=vec3(1.0,0.94,0.74)*pow(max(dot(N,Hh),0.0),55.0)*(1.0-step(0.55,land))*step(0.015,dot(N,L))*1.15; }
+        else { float n=fbm(N*7.0); base=mix(uColor*0.7,vec3(0.86,0.82,0.72),smoothstep(0.4,0.8,n)); base=mix(base,vec3(0.95,0.9,0.78),smoothstep(0.7,0.95,fbm(N*3.0))*0.4); }
+        vec3 col=base*(0.06+diff); float fres=1.0-max(dot(N,Vv),0.0), rim=pow(fres,3.0);
+        vec3 atm = (uType>2.5&&uType<3.5)?vec3(0.24,0.46,0.92):(uType<0.5?vec3(0.32,0.24,0.17):(uType<1.5?uColor*0.5+vec3(0.16):(uType<2.5?vec3(0.5,0.6,0.85):vec3(0.85,0.7,0.42))));
+        col+=rim*atm*(0.3+0.7*diff); col+=pow(fres,1.7)*atm*0.14*smoothstep(-0.2,0.4,dot(N,L)); col+=emis;
+        gl_FragColor=vec4(col,1.0); }` });
+}
+function atmosphereShell(radius, tint, strength){
+  const m=new THREE.ShaderMaterial({ transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.FrontSide,
+    uniforms:{ uSun:{value:SUN}, uTint:{value:new THREE.Color(tint)}, uK:{value:strength} },
+    vertexShader:`varying vec3 vN; varying vec3 vW; void main(){ vW=(modelMatrix*vec4(position,1.0)).xyz; vN=normalize(mat3(modelMatrix)*normal); gl_Position=projectionMatrix*viewMatrix*vec4(vW,1.0); }`,
+    fragmentShader:`varying vec3 vN; varying vec3 vW; uniform vec3 uSun,uTint; uniform float uK;
+      void main(){ vec3 N=normalize(vN),Vv=normalize(cameraPosition-vW),L=normalize(uSun-vW); float fres=pow(1.0-max(dot(N,Vv),0.0),2.6); float lit=0.35+0.65*max(dot(N,L),0.0); float a=fres*lit*uK; gl_FragColor=vec4(uTint*a*1.4, a); }` });
+  return new THREE.Mesh(new THREE.SphereGeometry(radius*1.06, 40, 40), m);
+}
+function ringMesh(inner, outer, tilt, ca, cb){
+  const m=new THREE.ShaderMaterial({ transparent:true, depthWrite:false, side:THREE.DoubleSide,
+    uniforms:{ uIn:{value:inner}, uOut:{value:outer}, uCA:{value:new THREE.Color(ca)}, uCB:{value:new THREE.Color(cb)} },
+    vertexShader:`varying float vR; void main(){ vR=length(position.xy); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: NOISE + `varying float vR; uniform vec3 uCA,uCB; uniform float uIn,uOut;
+      void main(){ float t=(vR-uIn)/max(uOut-uIn,1e-3); float bands=0.5+0.5*sin(t*62.0+fbm(vec3(t*30.0,0.0,0.0))*3.0); float gap=smoothstep(0.13,0.17,abs(fract(t*5.0)-0.5)); float a=bands*gap*(1.0-smoothstep(0.92,1.0,t))*0.7; gl_FragColor=vec4(mix(uCA,uCB,bands), a); }` });
+  const mesh=new THREE.Mesh(new THREE.RingGeometry(inner, outer, 128, 1), m); mesh.rotation.x = -Math.PI/2 + tilt; return mesh;
+}
+function orbitLine(r){
+  const pts=[]; for(let i=0;i<=128;i++){ const a=i/128*Math.PI*2; pts.push(new THREE.Vector3(Math.cos(a)*r,0,Math.sin(a)*r)); }
+  return new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color:0x8a93b4, transparent:true, opacity:0.12 }));
+}
+
+/* the worlds — type: 0 rocky · 1 gas · 2 ice · 3 living · 4 cloud/venus */
+const PLANETS = [
+  { name:'Mercury', type:0, r:0.55, a:8,    spd:1.60, color:0x8a7a6a, spin:0.5 },
+  { name:'Venus',   type:4, r:0.95, a:12,   spd:1.18, color:0xd9b27a, spin:0.2 },
+  { name:'Earth',   type:3, r:1.05, a:16.5, spd:1.00, color:0x2a6cc0, spin:1.2, moons:[{r:0.28,a:2.2,spd:2.4,color:0x9a9a9a,type:0}] },
+  { name:'Mars',    type:0, r:0.72, a:21,   spd:0.80, color:0xb5502f, spin:1.1 },
+  { name:'Jupiter', type:1, r:2.4,  a:40,   spd:0.44, color:0xcaa26a, spin:2.2, moons:[{r:0.30,a:3.6,spd:2.0,color:0xd8c89a,type:0},{r:0.34,a:4.6,spd:1.5,color:0x9fb0c0,type:2}] },
+  { name:'Saturn',  type:1, r:2.05, a:54,   spd:0.33, color:0xd7c08a, spin:2.0, ring:[2.7,4.6,0.18,0xe9d6a8,0x8a7250] },
+  { name:'Uranus',  type:2, r:1.5,  a:68,   spd:0.24, color:0x9fe0e6, spin:1.6, ring:[2.0,3.0,1.2,0xbfeef2,0x5f8f96], tilt:0.9 },
+  { name:'Neptune', type:2, r:1.45, a:80,   spd:0.20, color:0x4a6cf0, spin:1.6 },
+];
+const bodies=[];
+for(const p of PLANETS){
+  const mesh=new THREE.Mesh(new THREE.SphereGeometry(p.r, 48, 48), planetMaterial(p.type, p.color));
+  if(p.tilt) mesh.rotation.z = p.tilt;
+  const shellTint = p.type===3?0x69a6ff:p.type===2?0x9fe0e6:p.type===1?p.color:p.type===4?0xe6c078:0x6f5a44;
+  mesh.add(atmosphereShell(p.r, shellTint, p.type===3?0.9:0.5));
+  if(p.ring) mesh.add(ringMesh(p.ring[0],p.ring[1],p.ring[2],p.ring[3],p.ring[4]));
+  scene.add(mesh); scene.add(orbitLine(p.a));
+  const rec={ p, mesh, ang:Math.random()*Math.PI*2, moons:[] };
+  if(p.moons) for(const mo of p.moons){ const mm=new THREE.Mesh(new THREE.SphereGeometry(mo.r,32,32), planetMaterial(mo.type, mo.color)); scene.add(mm); rec.moons.push({mo, mm, ang:Math.random()*Math.PI*2}); }
+  bodies.push(rec);
+}
+
+/* asteroid belt (points) */
+{
+  const N=mobile?1400:4000, pos=new Float32Array(N*3), ph=new Float32Array(N), spd=new Float32Array(N);
+  for(let i=0;i<N;i++){ const a=Math.random()*Math.PI*2, rr=27+Math.random()*8; pos[i*3]=Math.cos(a)*rr; pos[i*3+1]=(Math.random()-0.5)*1.2; pos[i*3+2]=Math.sin(a)*rr; ph[i]=a; spd[i]=0.6/Math.sqrt(rr); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  const belt=new THREE.Points(g, new THREE.PointsMaterial({ color:0xa89a86, size:0.9, sizeAttenuation:true, transparent:true, opacity:0.85, depthWrite:false }));
+  belt.userData={pos,ph,spd,N}; scene.add(belt); window._belt=belt;
+}
+
+/* click-to-frame a world */
+const ray=new THREE.Raycaster(), pndc=new THREE.Vector2();
+renderer.domElement.addEventListener('click', e=>{
+  pndc.x=(e.clientX/innerWidth)*2-1; pndc.y=-(e.clientY/innerHeight)*2+1; ray.setFromCamera(pndc, camera);
+  const hits=ray.intersectObjects(bodies.map(b=>b.mesh), false);
+  if(hits.length) controls.target.copy(hits[0].object.position);
+});
+
+/* postprocessing: bloom + ACES output — matching the raw-WebGL2 look */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), mobile?0.7:0.9, 0.55, 0.62);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+/* resize / idle / adaptive DPR + FPS governor (same idea as the main Orrery) */
+let rscale = mobile?0.85:1.0; const RMIN=0.5,RMAX=1.0; let qCool=0, frames=0, fpsT=performance.now(), fps=60;
+function resize(){ const w=innerWidth,h=innerHeight; renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1)*rscale); renderer.setSize(w,h); composer.setSize(w,h); bloom.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+let idleT; function wake(){ document.body.classList.remove('idle'); clearTimeout(idleT); idleT=setTimeout(()=>document.body.classList.add('idle'),4200); }
+addEventListener('pointerdown',wake); addEventListener('pointermove',wake); addEventListener('wheel',wake,{passive:true}); wake();
+
+const readout=document.getElementById('readout');
+function tick(){
+  const dt = reduce?0.0:Math.min(0.05, clock.getDelta()), t=clock.elapsedTime;
+  sunMat.uniforms.uT.value=t; if(window._stars) window._stars.userData.mat.uniforms.uT.value=t; sun.rotation.y += dt*0.05;
+  for(const b of bodies){ b.ang += dt*b.p.spd*0.25; const x=Math.cos(b.ang)*b.p.a, z=Math.sin(b.ang)*b.p.a;
+    b.mesh.position.set(x,0,z); b.mesh.rotation.y += dt*b.p.spin; b.mesh.material.uniforms.uT.value=t;
+    for(const mn of b.moons){ mn.ang += dt*mn.mo.spd; mn.mm.position.set(x+Math.cos(mn.ang)*mn.mo.a, Math.sin(mn.ang)*mn.mo.a*0.3, z+Math.sin(mn.ang)*mn.mo.a); mn.mm.material.uniforms.uT.value=t; } }
+  if(window._belt){ const b=window._belt, {pos,ph,spd,N}=b.userData; for(let i=0;i<N;i++){ ph[i]+=dt*spd[i]; const rr=Math.hypot(pos[i*3],pos[i*3+2]); pos[i*3]=Math.cos(ph[i])*rr; pos[i*3+2]=Math.sin(ph[i])*rr; } b.geometry.attributes.position.needsUpdate=true; }
+  controls.update(); composer.render();
+
+  frames++; const now=performance.now(); if(now-fpsT>500){ fps=Math.round(frames*1000/(now-fpsT)); frames=0; fpsT=now;
+    if(fps<42&&rscale>RMIN){ rscale=Math.max(RMIN,rscale-0.1); resize(); qCool=6; } else if(qCool>0){ qCool--; } else if(fps>=57&&rscale<RMAX){ rscale=Math.min(RMAX,rscale+0.06); resize(); qCool=6; }
+    readout.innerHTML='<b>'+PLANETS.length+'</b> worlds · three.js r160<br>'+fps+' fps · q'+Math.round(rscale*100)+'<br><b>hybrid</b> · planetary scene'; }
+  requestAnimationFrame(tick);
+}
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) clock.getDelta(); });
+requestAnimationFrame(tick);
+
+function showErr(){ const d=document.createElement('div'); d.className='err'; d.innerHTML='This prototype needs WebGL2 and network access to load three.js.<br>Open in a modern browser (Chrome, Firefox, Safari, Edge).'; document.body.appendChild(d); }
+addEventListener('error', e=>{ if(String(e.message||'').match(/import|module|three|fetch/i)) showErr(); });
+addEventListener('unhandledrejection', ()=>showErr());
+</script>
+</body>
+</html>

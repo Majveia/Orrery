@@ -194,3 +194,16 @@ cross-fade. The chapter card names the dominant scale by how *centered* `logScal
 in each band's range ("The Stellar Neighbourhood", "The Galaxy", "The Cosmic Web"), and
 the backdrop nebula dims as you leave the solar system. Adding the next scale is one more
 `Band` with a declared `logRange`; the renderer loop needs no change.
+
+## Experiments
+
+- **`solar-hybrid.html`** — a Three.js prototype of the planetary scene, exploring a *hybrid*
+  path: let a library own the scene graph, camera, touch controls (`OrbitControls`) and
+  postprocessing (`UnrealBloomPass` + ACES) while the Orrery's own hand-built shaders keep
+  the look — the procedural nebula sky, the granulating Sun with its corona, and the planet
+  body shader (rocky / gas-banded / ice / living world / cloud) with sunlit atmospheric
+  limbs, ocean sun-glint, and Saturn/Uranus rings, all ported into `ShaderMaterial`s. Single
+  file, no build step; three.js is pinned via an import map (CDN). It reuses the same
+  device-tiered render-scale + FPS governor and mobile-first UI as the main Orrery. This is a
+  standalone exploration, not wired into the continuous zoom — the exotic bands (cosmic web,
+  black hole, Lenia, the city) stay hand-built in raw WebGL2.
